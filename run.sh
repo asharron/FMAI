@@ -28,4 +28,4 @@ if [ -f "$CONFIG_FILE" ]; then
 fi
 
 # Run bizhawk with the dll
-exec ./BizHawk/EmuHawkMono.sh --open-ext-tool-dll=FMAI.dll "$@"
+exec ./BizHawk/EmuHawkMono.sh --open-ext-tool-dll=FMAI.dll ~/repos/FMAI/front_mission_japan.zip "$@"
