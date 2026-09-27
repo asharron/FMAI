@@ -11,3 +11,6 @@ Position: 00D540 ->
 Sakata:
 00D600
 00D610
+
+Enemy?
+00D849

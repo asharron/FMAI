@@ -97,6 +97,7 @@ public class FmaiForm : Form, IExternalToolForm {
         new("Sakata", "Long Stat Exp 256 Multiplier", 0x00D5ED, 1),
         new("Sakata", "Agility Stat Exp", 0x00D5EE, 1),
         new("Sakata", "Agility Stat Exp 256 Multiplier", 0x00D5EF, 1),
+        
         new("Sakata", "Skill #1", 0x00D5F0, 1),
         new("Sakata", "Skill #2", 0x00D5F1, 1),
         new("Sakata", "Skill #3", 0x00D5F2, 1),
@@ -108,6 +109,50 @@ public class FmaiForm : Form, IExternalToolForm {
         new("Sakata", "X Position?", 0x00D5D3L, 1),
         new("Sakata", "Y Position?", 0x00D5D5L, 1),
         new("Sakata", "Has Turn Completed", 0x00D5FFL, 1),
+       
+      
+        // Kalen
+        ///////////////////////////////////
+        new("Kalen", "Body Health", 0x00D696, 1),
+        new("Kalen", "Body Health Multiplier", 0x00D697, 1),
+        new("Kalen", "Body Max Health", 0x00D698, 1),
+        new("Kalen", "Body Max Health Multiplier", 0x00D699, 1),
+        
+        new("Kalen", "Left Arm Health", 0x00D69C, 1),
+        new("Kalen", "Left Arm Health Multiplier", 0x00D69D, 1),
+        new("Kalen", "Left Arm Max Health", 0x00D69E, 1),
+        new("Kalen", "Left Arm Max Health Multiplier", 0x00D69F, 1),
+        
+        new("Kalen", "Right Arm Health", 0x00D6A2, 1),
+        new("Kalen", "Right Arm Health Multiplier", 0x00D6A3, 1),
+        new("Kalen", "Right Arm Max Health", 0x00D6A4, 1),
+        new("Kalen", "Right Arm Max Health Multiplier", 0x00D6A5, 1),
+        
+        new("Kalen", "Leg Arm Health", 0x00D6A2, 1),
+        new("Kalen", "Leg Arm Health Multiplier", 0x00D6A3, 1),
+        new("Kalen", "Leg Arm Max Health", 0x00D6A4, 1),
+        new("Kalen", "Leg Arm Max Health Multiplier", 0x00D6A5, 1),
+        
+        new("Kalen", "Fight Stat Exp", 0x00D673, 1),
+        new("Kalen", "Fight Stat Exp 256 Multiplier", 0x00D674, 1),
+        new("Kalen", "Short Stat Exp", 0x00D675, 1),
+        new("Kalen", "Short Stat Exp 256 Multiplier", 0x00D676, 1),
+        new("Kalen", "Long Stat Exp", 0x00D677, 1),
+        new("Kalen", "Long Stat Exp 256 Multiplier", 0x00D678, 1),
+        new("Kalen", "Agility Stat Exp", 0x00D679, 1),
+        new("Kalen", "Agility Stat Exp 256 Multiplier", 0x00D67A, 1),
+        
+        new("Kalen", "Max Move", 0x00D684, 1),
+        
+        new("Sakata", "Skill #1", 0x00D67B, 1),
+        new("Sakata", "Skill #2", 0x00D67C, 1),
+        new("Sakata", "Skill #3", 0x00D67D, 1),
+        new("Sakata", "Skill #4", 0x00D67E, 1),
+        new("Sakata", "Skill #5", 0x00D67F, 1),
+        
+        // Enemy
+        ///////////////////////////
+        new("Enemy 1", "Leg Health", 0x00D849L, 1),
     ];
 
     private readonly List<(RamValue RamValue, Label Label)> rows =
