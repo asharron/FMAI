@@ -25,53 +25,92 @@ public class FmaiForm : Form, IExternalToolForm {
     }
 
     private static readonly RamValue[] TrackedValues = [
-        new("Loyd", "Body Health",      0x00D580L, 2),
-        new("Loyd", "Body Max Health",  0x00D582L, 2),
-        new("Loyd", "Left Arm Health",     0x00D586L, 2),
-        new("Loyd", "Left Arm Max Health", 0x00D588L, 2),
-        new("Loyd", "Right Arm Health",     0x00D58CL, 2),
-        new("Loyd", "Right Arm Max Health", 0x00D58EL, 2),
-        new("Loyd", "Leg Health",     0x00D592L, 2),
-        new("Loyd", "Leg Max Health", 0x00D594L, 2),
-        new("Loyd", "Max Move",      0x00D56EL, 2),
+        
+        
+        // Loyd
+        //////////////////////////////////////////
+        // Health
+        new("Loyd", "Body Health",      0x00D580L, 1),
+        new("Loyd", "Body Health 256 Multiplier",      0x00D581L, 1),
+        new("Loyd", "Body Max Health",  0x00D582L, 1),
+        new("Loyd", "Body Max Health 256 Multiplier",  0x00D583L, 1),
+        new("Loyd", "Left Arm Health",     0x00D586L, 1),
+        new("Loyd", "Left Arm Health 256 Multiplier",     0x00D587L, 1),
+        new("Loyd", "Left Arm Max Health", 0x00D588L, 1),
+        new("Loyd", "Left Arm Max Health 256 Multiplier", 0x00D589L, 1),
+        new("Loyd", "Right Arm Health",     0x00D58CL, 1),
+        new("Loyd", "Right Arm Health 256 Multiplier",     0x00D58DL, 1),
+        new("Loyd", "Right Arm Max Health", 0x00D58EL, 1),
+        new("Loyd", "Right Arm Max Health 256 Multiplier", 0x00D58FL, 1),
+        new("Loyd", "Leg Health",     0x00D592L, 1),
+        new("Loyd", "Leg Health 256 Multiplier",     0x00D593L, 1),
+        new("Loyd", "Leg Max Health", 0x00D594L, 1),
+        new("Loyd", "Leg Max Health 256 Multiplier", 0x00D595L, 1),
+        
+        // Exp
         new("Loyd", "Fight Stat Exp",      0x00D55DL, 1),
-        new("Loyd", "Fight Stat Exp Multiplier",      0x00D55EL, 1),
+        new("Loyd", "Fight Stat Exp 256 Multiplier",      0x00D55EL, 1),
         new("Loyd", "Short Stat Exp",      0x00D55FL, 1),
-        new("Loyd", "Short Stat Exp Multiplier",      0x00D560L, 1),
+        new("Loyd", "Short Stat Exp 256 Multiplier",      0x00D560L, 1),
         new("Loyd", "Long Stat Exp",      0x00D561L, 1),
-        new("Loyd", "Long Stat Exp Multiplier",      0x00D562L, 1),
+        new("Loyd", "Long Stat Exp 256 Multiplier",      0x00D562L, 1),
         new("Loyd", "Agility Stat Exp",      0x00D563L, 1),
-        new("Loyd", "Agility Stat Exp Multiplier",      0x00D564L, 1),
+        new("Loyd", "Agility Stat Exp 256 Multiplier",      0x00D564L, 1),
         new("Loyd", "Skill #1", 0x00D565L, 1),
         new("Loyd", "Skill #2", 0x00D566L, 1),
         new("Loyd", "Skill #3", 0x00D567L, 1),
         new("Loyd", "Skill #4", 0x00D568L, 1),
         new("Loyd", "Skill #5", 0x00D569L, 1),
         
+        // Turn
+        new("Loyd", "Has Turn Completed", 0x00D574L, 1),
+        new("Loyd", "X Position?", 0x00D548L, 1),
+        new("Loyd", "Y Position?", 0x00D54AL, 1),
+        new("Loyd", "Max Move",      0x00D56EL, 1),
        
-        // This may not be big endian and instead int + multiplier
-        new("Sakata", "Body Health", 0x00D60A, 2, isBigEndian:true),
-        new("Sakata", "Body Max Health", 0x00D60C, 2, isBigEndian:true),
-        new("Sakata", "Left Arm Health", 0x00D610, 2, isBigEndian:true),
-        new("Sakata", "Left Arm Max Health", 0x00D612, 2, isBigEndian:true),
-        new("Sakata", "Right Arm Health", 0x00D616, 2, isBigEndian:true),
-        new("Sakata", "Right Arm Max Health", 0x00D618, 2, isBigEndian:true),
-        new("Sakata", "Leg Health", 0x00D61C, 2, isBigEndian:true),
-        new("Sakata", "Leg Max Health", 0x00D61E, 2, isBigEndian:true),
-        new("Sakata", "Max Move", 0x00D5F8, 2, isBigEndian:true),
-        new("Sakata", "Fight Stat Exp", 0x00D5E8, 2),
-        new("Sakata", "Short Stat Exp", 0x00D5EA, 2),
-        new("Sakata", "Long Stat Exp", 0x00D5EC, 2),
-        new("Sakata", "Agility Stat Exp", 0x00D5EE, 2),
-        // Need to correct this since the exp is broken up by int + multiplier
+        // Sakata
+        ///////////////////////////////////////////////
+        // Health
+        new("Sakata", "Body Health", 0x00D60B, 1),
+        new("Sakata", "Body Health 256 Multiplier", 0x00D60C, 1),
+        new("Sakata", "Body Max Health", 0x00D60D, 1),
+        new("Sakata", "Body Max Health 256 Multiplier", 0x00D60E, 1),
+        new("Sakata", "Left Arm Health", 0x00D611, 1),
+        new("Sakata", "Left Arm Health 256 Multiplier", 0x00D612, 1),
+        new("Sakata", "Left Arm Max Health", 0x00D613, 1),
+        new("Sakata", "Left Arm Max Health 256 Multiplier", 0x00D614, 1),
+        new("Sakata", "Right Arm Health", 0x00D617, 1),
+        new("Sakata", "Right Arm Health 256 Multiplier", 0x00D618, 1),
+        new("Sakata", "Right Arm Max Health", 0x00D619, 1),
+        new("Sakata", "Right Arm Max Health 256 Multiplier", 0x00D61A, 1),
+        new("Sakata", "Leg Health", 0x00D61D, 1),
+        new("Sakata", "Leg Health 256 Multiplier", 0x00D61E, 1),
+        new("Sakata", "Leg Max Health", 0x00D61F, 1),
+        new("Sakata", "Leg Max Health 256 Multiplier", 0x00D620, 1),
+        
+        // Exp
+        new("Sakata", "Fight Stat Exp", 0x00D5E8, 1),
+        new("Sakata", "Fight Stat Exp 256 Multiplier", 0x00D5E9, 1),
+        new("Sakata", "Short Stat Exp", 0x00D5EA, 1),
+        new("Sakata", "Short Stat Exp 256 Multiplier", 0x00D5EB, 1),
+        new("Sakata", "Long Stat Exp", 0x00D5EC, 1),
+        new("Sakata", "Long Stat Exp 256 Multiplier", 0x00D5ED, 1),
+        new("Sakata", "Agility Stat Exp", 0x00D5EE, 1),
+        new("Sakata", "Agility Stat Exp 256 Multiplier", 0x00D5EF, 1),
         new("Sakata", "Skill #1", 0x00D5F0, 1),
         new("Sakata", "Skill #2", 0x00D5F1, 1),
         new("Sakata", "Skill #3", 0x00D5F2, 1),
         new("Sakata", "Skill #4", 0x00D5F3, 1),
         new("Sakata", "Skill #5", 0x00D5F4, 1),
+        
+        // Turn
+        new("Sakata", "Max Move", 0x00D5F9, 1),
+        new("Sakata", "X Position?", 0x00D5D3L, 1),
+        new("Sakata", "Y Position?", 0x00D5D5L, 1),
+        new("Sakata", "Has Turn Completed", 0x00D5FFL, 1),
     ];
 
-    private readonly List<(RamValue Value, Label Label)> rows =
+    private readonly List<(RamValue RamValue, Label Label)> rows =
         TrackedValues.Select(v => (v, new Label { AutoSize = true })).ToList();
 
     public FmaiForm() {
@@ -84,8 +123,23 @@ public class FmaiForm : Form, IExternalToolForm {
             Padding = new Padding(10),
             AutoScroll = true,
         };
+        
+        CreateFormControls(root);
+        Controls.Add(root);
 
-        foreach (var group in rows.GroupBy(r => r.Value.Character)) {
+        ResumeLayout(performLayout: false);
+        PerformLayout();
+
+        Load += (_, _) => IsLoaded = true;
+        Activated += (_, _) => IsActive = true;
+        Deactivate += (_, _) => IsActive = false;
+        FormClosed += (_, _) => IsLoaded = false;
+
+        Shown += (_, _) => { ApiContainer?.SaveState.LoadSlot(1); };
+    }
+
+    private void CreateFormControls(Control rootControl) {
+        foreach (var group in rows.GroupBy(r => r.RamValue.Character)) {
             var box = new GroupBox {
                 Text = group.Key,
                 AutoSize = true,
@@ -100,24 +154,49 @@ public class FmaiForm : Form, IExternalToolForm {
             };
 
             foreach (var row in group) {
-                inner.Controls.Add(row.Label);
+                var rowControl = new FlowLayoutPanel {
+                    FlowDirection = FlowDirection.LeftToRight,
+                    AutoSize=true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                };
+
+                var incrementButton = new Button { Text = "Increment", AutoSize=true };
+                var decrementButton = new Button{Text="Decrement", AutoSize=true};
+
+                incrementButton.Click += (_, _) => {
+                    if (ApiContainer == null) {
+                        return;
+                    }
+                    
+                    var currentValue = RamValueToInt(row.RamValue);
+                    currentValue++;
+
+                    var byteValue = BitConverter.GetBytes(currentValue);
+                    ApiContainer.Memory.WriteByteRange(row.RamValue.Address, byteValue);
+                };
+
+                decrementButton.Click += (_, _) => {
+                    if (ApiContainer == null) {
+                        return;
+                    }
+                    
+                    var currentValue = RamValueToInt(row.RamValue);
+                    currentValue--;
+
+                    var byteValue = BitConverter.GetBytes(currentValue);
+                    ApiContainer.Memory.WriteByteRange(row.RamValue.Address, byteValue);
+                };
+                
+                rowControl.Controls.Add(row.Label);
+                rowControl.Controls.Add(incrementButton);
+                rowControl.Controls.Add(decrementButton);
+                
+                inner.Controls.Add(rowControl);
             }
 
             box.Controls.Add(inner);
-            root.Controls.Add(box);
+            rootControl.Controls.Add(box);
         }
-
-        Controls.Add(root);
-
-        ResumeLayout(performLayout: false);
-        PerformLayout();
-
-        Load += (_, _) => IsLoaded = true;
-        Activated += (_, _) => IsActive = true;
-        Deactivate += (_, _) => IsActive = false;
-        FormClosed += (_, _) => IsLoaded = false;
-
-        Shown += (_, _) => { ApiContainer?.SaveState.LoadSlot(1); };
     }
 
     private ushort RamValueToInt(RamValue ramValue) {
