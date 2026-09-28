@@ -47,6 +47,33 @@ public class FmaiForm : Form, IExternalToolForm {
         new("Loyd", "Leg Max Health", 0x00D594L, 1),
         new("Loyd", "Leg Max Health 256 Multiplier", 0x00D595L, 1),
         
+        new("Loyd", "Item #1", 0x00D5BFL, 1),
+        new("Loyd", "Item #1 Category?", 0x00D5C0L, 1),
+        new("Loyd", "Item #2", 0x00D5C1L, 1),
+        new("Loyd", "Item #2 Category?", 0x00D5C2L, 1),
+        new("Loyd", "Item #3", 0x00D5C3L, 1),
+        new("Loyd", "Item #3 Category?", 0x00D5C4L, 1),
+        new("Loyd", "Item #4", 0x00D5C5L, 1),
+        new("Loyd", "Item #4 Category?", 0x00D5C6L, 1),
+        new("Loyd", "Item #5", 0x00D5C7L, 1),
+        new("Loyd", "Item #5 Category?", 0x00D5C8L, 1),
+        new("Loyd", "Item #6", 0x00D5C9L, 1),
+        new("Loyd", "Item #6 Category?", 0x00D5CAL, 1),
+        new("Loyd", "Item #7", 0x00D5CBL, 1),
+        new("Loyd", "Item #7 Category?", 0x00D5CCL, 1),
+        new("Loyd", "Item #8", 0x00D5CDL, 1),
+        new("Loyd", "Item #8 Category?", 0x00D5CEL, 1),
+       
+        
+        
+        
+        new("Loyd", "Body Item", 0x00D5B7L, 1),
+        
+        new("Loyd", "L. Grip Item", 0x00D597L, 1),
+        new("Loyd", "L. Grip Max Range", 0x00D59AL, 1),
+        new("Loyd", "L. Grip Capacity", 0x00D59CL, 1),
+        new("Loyd", "L. Grip Max Capacity", 0x00D59DL, 1),
+        
         // Exp
         new("Loyd", "Fight Stat Exp",      0x00D55DL, 1),
         new("Loyd", "Fight Stat Exp 256 Multiplier",      0x00D55EL, 1),
@@ -128,10 +155,10 @@ public class FmaiForm : Form, IExternalToolForm {
         new("Kalen", "Right Arm Max Health", 0x00D6A4, 1),
         new("Kalen", "Right Arm Max Health Multiplier", 0x00D6A5, 1),
         
-        new("Kalen", "Leg Arm Health", 0x00D6A2, 1),
-        new("Kalen", "Leg Arm Health Multiplier", 0x00D6A3, 1),
-        new("Kalen", "Leg Arm Max Health", 0x00D6A4, 1),
-        new("Kalen", "Leg Arm Max Health Multiplier", 0x00D6A5, 1),
+        new("Kalen", "Leg Health", 0x00D6A8, 1),
+        new("Kalen", "Leg Health Multiplier", 0x00D6A9, 1),
+        new("Kalen", "Leg Max Health", 0x00D6AA, 1),
+        new("Kalen", "Leg Max Health Multiplier", 0x00D6AB, 1),
         
         new("Kalen", "Fight Stat Exp", 0x00D673, 1),
         new("Kalen", "Fight Stat Exp 256 Multiplier", 0x00D674, 1),
@@ -144,11 +171,11 @@ public class FmaiForm : Form, IExternalToolForm {
         
         new("Kalen", "Max Move", 0x00D684, 1),
         
-        new("Sakata", "Skill #1", 0x00D67B, 1),
-        new("Sakata", "Skill #2", 0x00D67C, 1),
-        new("Sakata", "Skill #3", 0x00D67D, 1),
-        new("Sakata", "Skill #4", 0x00D67E, 1),
-        new("Sakata", "Skill #5", 0x00D67F, 1),
+        new("Kalen", "Skill #1", 0x00D67B, 1),
+        new("Kalen", "Skill #2", 0x00D67C, 1),
+        new("Kalen", "Skill #3", 0x00D67D, 1),
+        new("Kalen", "Skill #4", 0x00D67E, 1),
+        new("Kalen", "Skill #5", 0x00D67F, 1),
         
         // Enemy
         ///////////////////////////
@@ -205,8 +232,8 @@ public class FmaiForm : Form, IExternalToolForm {
                     AutoSizeMode = AutoSizeMode.GrowAndShrink,
                 };
 
-                var incrementButton = new Button { Text = "Increment", AutoSize=true };
-                var decrementButton = new Button{Text="Decrement", AutoSize=true};
+                var incrementButton = new Button { Text = "+", AutoSize=true };
+                var decrementButton = new Button{Text="-", AutoSize=true};
 
                 incrementButton.Click += (_, _) => {
                     if (ApiContainer == null) {
