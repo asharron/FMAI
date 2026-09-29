@@ -11,6 +11,7 @@ using System.Runtime.Remoting.Channels;
 namespace FMAI;
 
 [ExternalTool("Hex Viewer")]
+[ExternalToolApplicability.SingleSystem(VSystemID.Raw.SNES)]
 public class HexViewer : Form, IExternalToolForm {
     public bool IsActive { get; private set; }
     public bool IsLoaded { get; private set; }
@@ -22,34 +23,37 @@ public class HexViewer : Form, IExternalToolForm {
     public void Restart() => RefreshFormControls();
     public bool AskSaveChanges() => true;
 
+    private static readonly string[] HexStrings = Enumerable.Range(0, 256).Select(b => b.ToString("X2")).ToArray();
+    private readonly DataTable _table;
 
     public HexViewer() {
         ClientSize = new Size(480, 320);
         SuspendLayout();
 
-        var table = new DataTable();
+        _table = new DataTable();
 
-        table.Columns.Add("0");
-        table.Columns.Add("1");
-        table.Columns.Add("2");
-        table.Columns.Add("3");
-        table.Columns.Add("4");
-        table.Columns.Add("5");
-        table.Columns.Add("6");
-        table.Columns.Add("7");
-        table.Columns.Add("8");
-        table.Columns.Add("9");
-        table.Columns.Add("A");
-        table.Columns.Add("B");
-        table.Columns.Add("C");
-        table.Columns.Add("D");
-        table.Columns.Add("E");
-        table.Columns.Add("F");
+        _table.Columns.Add("0");
+        _table.Columns.Add("1");
+        _table.Columns.Add("2");
+        _table.Columns.Add("3");
+        _table.Columns.Add("4");
+        _table.Columns.Add("5");
+        _table.Columns.Add("6");
+        _table.Columns.Add("7");
+        _table.Columns.Add("8");
+        _table.Columns.Add("9");
+        _table.Columns.Add("A");
+        _table.Columns.Add("B");
+        _table.Columns.Add("C");
+        _table.Columns.Add("D");
+        _table.Columns.Add("E");
+        _table.Columns.Add("F");
 
-        table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00");
-        table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00");
-        table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00");
-        table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "01", "00");
+        _table.BeginLoadData();
+        for (int i = 0; i < 8192; i++) {
+            _table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00");
+        }
+        _table.EndLoadData();
 
         var dataGridView = new DataGridView {
             Dock = DockStyle.Fill,
@@ -102,7 +106,8 @@ public class HexViewer : Form, IExternalToolForm {
                 return;
             }
             
-            DataGridView dgv = sender as DataGridView;
+            DataGridView? dgv = sender as DataGridView;
+            if (dgv == null) return;
             SortOrder sort = dgv.Columns[e.ColumnIndex].HeaderCell.SortGlyphDirection;
 
             if (e.RowIndex == -1 && sort == SortOrder.None) {
@@ -207,7 +212,7 @@ public class HexViewer : Form, IExternalToolForm {
             );
         };
 
-        dataGridView.DataSource = table;
+        dataGridView.DataSource = _table;
 
         Controls.Add(dataGridView);
 
@@ -219,10 +224,62 @@ public class HexViewer : Form, IExternalToolForm {
         Deactivate += (_, _) => IsActive = false;
         FormClosed += (_, _) => IsLoaded = false;
 
-        Shown += (_, _) => { ApiContainer?.SaveState.LoadSlot(1); };
+        Shown += (_, _) => {
+            ApiContainer?.SaveState.LoadSlot(1);
+            RefreshFormControls();
+        };
     }
 
 
+    private void EnsureRows(int totalBytes) {
+        int requiredRows = (totalBytes + _table.Columns.Count - 1) / _table.Columns.Count;
+        if (_table.Rows.Count == requiredRows) return;
+
+        _table.BeginLoadData();
+        while (_table.Rows.Count < requiredRows) {
+            _table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00");
+        }
+        while (_table.Rows.Count > requiredRows) {
+            _table.Rows.RemoveAt(_table.Rows.Count - 1);
+        }
+        _table.EndLoadData();
+    }
+
     private void RefreshFormControls() {
+        if (ApiContainer == null) {
+            return;
+        }
+
+        ApiContainer.Memory.SetBigEndian(false);
+
+        int totalBytes = (int)ApiContainer.Memory.GetCurrentMemoryDomainSize();
+        if (totalBytes <= 0) {
+            totalBytes = 0x20000;
+        }
+
+        EnsureRows(totalBytes);
+
+        var bytes = ApiContainer.Memory.ReadByteRange(0, totalBytes);
+        if (bytes == null) {
+            return;
+        }
+
+        int count = bytes.Count;
+        int cols = _table.Columns.Count;
+        int rows = _table.Rows.Count;
+
+        for (int row = 0; row < rows; row++) {
+            DataRow dataRow = _table.Rows[row];
+            int rowOffset = row * cols;
+            for (int col = 0; col < cols; col++) {
+                int index = rowOffset + col;
+                if (index < count) {
+                    string hexValue = HexStrings[bytes[index]];
+                    if (!ReferenceEquals(dataRow[col], hexValue) && !Equals(dataRow[col], hexValue)) {
+                        dataRow[col] = hexValue;
+                    }
+                }
+            }
+        }
     }
 }
