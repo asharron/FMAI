@@ -27,6 +27,8 @@ public class HexViewer : Form, IExternalToolForm {
     private readonly DataTable _table;
     private readonly DataGridView _dataGridView;
 
+    private Label debugLabel = new Label{AutoSize = true};
+
     public HexViewer() {
         ClientSize = new Size(480, 320);
         SuspendLayout();
@@ -80,6 +82,8 @@ public class HexViewer : Form, IExternalToolForm {
         _dataGridView.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
 
         _dataGridView.DataBindingComplete += (sender, e) => {
+            _dataGridView.ClearSelection();
+            _dataGridView.CurrentCell = null;
             _dataGridView.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
             _dataGridView.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
             _dataGridView.ColumnHeadersDefaultCellStyle.Padding = new Padding {
@@ -214,10 +218,18 @@ public class HexViewer : Form, IExternalToolForm {
             );
         };
 
-        _dataGridView.Scroll += (_, _) => RefreshFormControls();
+        _dataGridView.Scroll += (sender, e) => {
+            if (e.ScrollOrientation == ScrollOrientation.VerticalScroll && e.NewValue >= 0 && e.NewValue < _dataGridView.RowCount) {
+                _dataGridView.FirstDisplayedScrollingRowIndex = e.NewValue;
+            }
+            RefreshFormControls();
+        };
+
+        _dataGridView.MouseWheel += (_, _) => RefreshFormControls();
 
         _dataGridView.DataSource = _table;
 
+        Controls.Add(debugLabel);
         Controls.Add(_dataGridView);
 
         ResumeLayout(performLayout: false);
@@ -239,6 +251,8 @@ public class HexViewer : Form, IExternalToolForm {
         int requiredRows = (totalBytes + _table.Columns.Count - 1) / _table.Columns.Count;
         if (_table.Rows.Count == requiredRows) return;
 
+        int savedFirstRow = _dataGridView.FirstDisplayedScrollingRowIndex;
+
         _table.BeginLoadData();
         while (_table.Rows.Count < requiredRows) {
             _table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00");
@@ -247,6 +261,10 @@ public class HexViewer : Form, IExternalToolForm {
             _table.Rows.RemoveAt(_table.Rows.Count - 1);
         }
         _table.EndLoadData();
+
+        if (savedFirstRow >= 0 && savedFirstRow < _dataGridView.RowCount && _dataGridView.FirstDisplayedScrollingRowIndex != savedFirstRow) {
+            _dataGridView.FirstDisplayedScrollingRowIndex = savedFirstRow;
+        }
     }
 
     private void RefreshFormControls() {
@@ -303,6 +321,7 @@ public class HexViewer : Form, IExternalToolForm {
         }
 
         int count = bytes.Count;
+        _table.BeginLoadData();
         for (int r = 0; r < rowsToRead; r++) {
             int currentRow = firstRow + r;
             DataRow dataRow = _table.Rows[currentRow];
@@ -317,6 +336,11 @@ public class HexViewer : Form, IExternalToolForm {
                     }
                 }
             }
+        }
+        _table.EndLoadData();
+
+        if (_dataGridView.RowCount > 0 && firstRow >= 0 && firstRow < _dataGridView.RowCount && _dataGridView.FirstDisplayedScrollingRowIndex != firstRow) {
+            _dataGridView.FirstDisplayedScrollingRowIndex = firstRow;
         }
     }
 }
