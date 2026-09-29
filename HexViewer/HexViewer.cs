@@ -927,7 +927,7 @@ public class HexViewer : Form, IExternalToolForm {
                 byte.TryParse(str, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out currentVal);
             }
 
-            byte newVal = (byte)(currentVal + delta);
+            byte newVal = (byte)((currentVal + delta) & 0xFF);
 
             if (ApiContainer != null) {
                 ApiContainer.Memory.WriteByte(address, newVal);
