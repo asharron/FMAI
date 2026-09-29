@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.Linq;
 using BizHawk.Emulation.Common;
 using BizHawk.Client.Common;
@@ -26,8 +27,10 @@ public class HexViewer : Form, IExternalToolForm {
     private static readonly string[] HexStrings = Enumerable.Range(0, 256).Select(b => b.ToString("X2")).ToArray();
     private readonly DataTable _table;
     private readonly DataGridView _dataGridView;
+    private bool _isJumpDialogOpen;
 
     public HexViewer() {
+        KeyPreview = true;
         ClientSize = new Size(480, 320);
         SuspendLayout();
 
@@ -199,6 +202,37 @@ public class HexViewer : Form, IExternalToolForm {
 
         _dataGridView.MouseWheel += (_, _) => RefreshFormControls();
 
+        _dataGridView.KeyDown += (sender, e) => {
+            if (e.Control && e.KeyCode == Keys.J) {
+                OpenJumpToAddressDialog();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        };
+
+        _dataGridView.PreviewKeyDown += (sender, e) => {
+            if (e.Control && e.KeyCode == Keys.J) {
+                e.IsInputKey = true;
+            }
+        };
+
+        KeyDown += (sender, e) => {
+            if (e.Control && e.KeyCode == Keys.J) {
+                OpenJumpToAddressDialog();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        };
+
+        ContextMenuStrip contextMenu = new ContextMenuStrip();
+        ToolStripMenuItem jumpMenuItem = new ToolStripMenuItem("Jump to Address...", null, (sender, e) => OpenJumpToAddressDialog()) {
+            ShortcutKeys = Keys.Control | Keys.J,
+            ShowShortcutKeys = true
+        };
+        contextMenu.Items.Add(jumpMenuItem);
+        _dataGridView.ContextMenuStrip = contextMenu;
+        ContextMenuStrip = contextMenu;
+
         _dataGridView.DataSource = _table;
 
         Controls.Add(_dataGridView);
@@ -312,6 +346,217 @@ public class HexViewer : Form, IExternalToolForm {
 
         if (_dataGridView.RowCount > 0 && firstRow >= 0 && firstRow < _dataGridView.RowCount && _dataGridView.FirstDisplayedScrollingRowIndex != firstRow) {
             _dataGridView.FirstDisplayedScrollingRowIndex = firstRow;
+        }
+    }
+    
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData) {
+        if (keyData == (Keys.Control | Keys.J)) {
+            OpenJumpToAddressDialog();
+            return true;
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    protected override bool ProcessDialogKey(Keys keyData) {
+        if (keyData == (Keys.Control | Keys.J)) {
+            OpenJumpToAddressDialog();
+            return true;
+        }
+        return base.ProcessDialogKey(keyData);
+    }
+
+    protected override bool ProcessKeyPreview(ref Message m) {
+        const int WM_KEYDOWN = 0x0100;
+        if (m.Msg == WM_KEYDOWN) {
+            Keys key = (Keys)(int)m.WParam | ModifierKeys;
+            if (key == (Keys.Control | Keys.J)) {
+                OpenJumpToAddressDialog();
+                return true;
+            }
+        }
+        return base.ProcessKeyPreview(ref m);
+    }
+
+    public void OpenJumpToAddressDialog() {
+        if (_isJumpDialogOpen) return;
+        _isJumpDialogOpen = true;
+        try {
+            long currentAddress = 0;
+            if (_dataGridView.CurrentCell != null) {
+                currentAddress = (long)_dataGridView.CurrentCell.RowIndex * _table.Columns.Count + _dataGridView.CurrentCell.ColumnIndex;
+            } else if (_dataGridView.FirstDisplayedScrollingRowIndex >= 0) {
+                currentAddress = (long)_dataGridView.FirstDisplayedScrollingRowIndex * _table.Columns.Count;
+            }
+
+            long totalBytes = GetTotalMemorySize();
+
+            using var dialog = new JumpToAddressDialog(currentAddress, totalBytes);
+            if (dialog.ShowDialog(this) == DialogResult.OK) {
+                JumpToAddress(dialog.TargetAddress);
+            }
+        } finally {
+            _isJumpDialogOpen = false;
+        }
+    }
+
+    public void JumpToAddress(long address) {
+        int totalBytes = (int)GetTotalMemorySize();
+        EnsureRows(totalBytes);
+
+        int cols = _table.Columns.Count;
+        if (cols <= 0 || _table.Rows.Count == 0) return;
+
+        int targetRow = (int)(address / cols);
+        int targetCol = (int)(address % cols);
+
+        if (targetRow < 0) targetRow = 0;
+        if (targetRow >= _dataGridView.RowCount) targetRow = _dataGridView.RowCount - 1;
+        if (targetCol < 0) targetCol = 0;
+        if (targetCol >= _dataGridView.ColumnCount) targetCol = _dataGridView.ColumnCount - 1;
+
+        if (_dataGridView.RowCount > 0 && targetRow >= 0 && targetRow < _dataGridView.RowCount) {
+            _dataGridView.FirstDisplayedScrollingRowIndex = targetRow;
+        }
+
+        RefreshFormControls();
+
+        if (targetRow < _dataGridView.RowCount && targetCol < _dataGridView.ColumnCount) {
+            _dataGridView.ClearSelection();
+            _dataGridView.CurrentCell = _dataGridView.Rows[targetRow].Cells[targetCol];
+            _dataGridView.Rows[targetRow].Cells[targetCol].Selected = true;
+            _dataGridView.Focus();
+        }
+    }
+
+    private long GetTotalMemorySize() {
+        if (ApiContainer != null) {
+            long size = ApiContainer.Memory.GetCurrentMemoryDomainSize();
+            if (size > 0) {
+                return size;
+            }
+        }
+        if (_table.Rows.Count > 0) {
+            return (long)_table.Rows.Count * _table.Columns.Count;
+        }
+        return 0x20000;
+    }
+
+    public static bool TryParseAddress(string? input, out long address) {
+        address = 0;
+        if (string.IsNullOrWhiteSpace(input)) {
+            return false;
+        }
+
+        string text = input!.Trim();
+
+        if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) {
+            text = text.Substring(2).Trim();
+        } else if (text.StartsWith("$") || text.StartsWith("#")) {
+            text = text.Substring(1).Trim();
+        }
+
+        if (text.EndsWith("h", StringComparison.OrdinalIgnoreCase)) {
+            text = text.Substring(0, text.Length - 1).Trim();
+        }
+
+        text = text.Replace(":", "").Replace(" ", "");
+
+        if (string.IsNullOrEmpty(text)) {
+            return false;
+        }
+
+        return long.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out address) && address >= 0;
+    }
+
+    private sealed class JumpToAddressDialog : Form {
+        private readonly TextBox _addressTextBox;
+        private readonly long _maxAddress;
+
+        public long TargetAddress { get; private set; }
+
+        public JumpToAddressDialog(long currentAddress, long maxAddress) {
+            _maxAddress = maxAddress;
+
+            Text = "Jump to Address";
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(280, 115);
+            Font = new Font("Segoe UI", 9f, FontStyle.Regular);
+
+            Label label = new Label {
+                Text = "Enter Address (Hex):",
+                Location = new Point(14, 12),
+                AutoSize = true
+            };
+
+            _addressTextBox = new TextBox {
+                Location = new Point(16, 34),
+                Size = new Size(248, 23),
+                Font = new Font("Consolas", 10f, FontStyle.Regular),
+                Text = currentAddress >= 0 ? currentAddress.ToString("X") : "0"
+            };
+
+            Button okButton = new Button {
+                Text = "Jump",
+                Location = new Point(108, 72),
+                Size = new Size(75, 26),
+                UseVisualStyleBackColor = true
+            };
+
+            Button cancelButton = new Button {
+                Text = "Cancel",
+                DialogResult = DialogResult.Cancel,
+                Location = new Point(189, 72),
+                Size = new Size(75, 26),
+                UseVisualStyleBackColor = true
+            };
+
+            okButton.Click += (sender, e) => {
+                if (TryParseAddress(_addressTextBox.Text, out long parsedAddress)) {
+                    if (parsedAddress < 0 || (_maxAddress > 0 && parsedAddress >= _maxAddress)) {
+                        string maxStr = _maxAddress > 0 ? (_maxAddress - 1).ToString("X6") : "FFFFFF";
+                        MessageBox.Show(
+                            this,
+                            $"Address is out of range.\nValid range: $000000 - ${maxStr}",
+                            "Invalid Address",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Warning
+                        );
+                        _addressTextBox.Focus();
+                        _addressTextBox.SelectAll();
+                        return;
+                    }
+                    TargetAddress = parsedAddress;
+                    DialogResult = DialogResult.OK;
+                    Close();
+                } else {
+                    MessageBox.Show(
+                        this,
+                        "Please enter a valid hexadecimal address (e.g. 7E0000, $1234, 0x100).",
+                        "Invalid Address",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning
+                    );
+                    _addressTextBox.Focus();
+                    _addressTextBox.SelectAll();
+                }
+            };
+
+            AcceptButton = okButton;
+            CancelButton = cancelButton;
+
+            Controls.Add(label);
+            Controls.Add(_addressTextBox);
+            Controls.Add(okButton);
+            Controls.Add(cancelButton);
+
+            Shown += (sender, e) => {
+                _addressTextBox.Focus();
+                _addressTextBox.SelectAll();
+            };
         }
     }
 }
