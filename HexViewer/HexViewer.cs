@@ -10,7 +10,10 @@ using BizHawk.Emulation.Common;
 using BizHawk.Client.Common;
 using System.Windows.Forms;
 using System.Drawing;
+using System.Reflection;
 using System.Runtime.Remoting.Channels;
+using System.Windows.Forms.VisualStyles;
+using ContentAlignment = System.Drawing.ContentAlignment;
 
 namespace FMAI;
 
@@ -244,15 +247,6 @@ public class HexViewer : Form, IExternalToolForm {
             );
         };
 
-        _dataGridView.Scroll += (sender, e) => {
-            if (e.ScrollOrientation == ScrollOrientation.VerticalScroll && e.NewValue >= 0 && e.NewValue < _dataGridView.RowCount) {
-                _dataGridView.FirstDisplayedScrollingRowIndex = e.NewValue;
-            }
-            RefreshFormControls();
-        };
-
-        _dataGridView.MouseWheel += (_, _) => RefreshFormControls();
-
         _dataGridView.SelectionChanged += (sender, e) => UpdateSelectedCellNote();
         _dataGridView.CurrentCellChanged += (sender, e) => UpdateSelectedCellNote();
 
@@ -443,12 +437,20 @@ public class HexViewer : Form, IExternalToolForm {
         };
     }
 
+    private int CalculateFirstViewedRowIndex() {
+        var verticalOffset = _dataGridView.VerticalScrollingOffset;
+        var verticalOffsetSnapped = verticalOffset;
+        if (verticalOffset % 25 > 0) {
+            verticalOffsetSnapped = (verticalOffset / 25) * 25;
+        }
+        
+        return (verticalOffsetSnapped / 25 );
+    }
+
 
     private void EnsureRows(int totalBytes) {
         int requiredRows = (totalBytes + BytesPerRow - 1) / BytesPerRow;
         if (_table.Rows.Count == requiredRows) return;
-
-        int savedFirstRow = _dataGridView.FirstDisplayedScrollingRowIndex;
 
         _table.BeginLoadData();
         while (_table.Rows.Count < requiredRows) {
@@ -461,10 +463,6 @@ public class HexViewer : Form, IExternalToolForm {
             _table.Rows.RemoveAt(_table.Rows.Count - 1);
         }
         _table.EndLoadData();
-
-        if (savedFirstRow >= 0 && savedFirstRow < _dataGridView.RowCount && _dataGridView.FirstDisplayedScrollingRowIndex != savedFirstRow) {
-            _dataGridView.FirstDisplayedScrollingRowIndex = savedFirstRow;
-        }
     }
 
     private void RefreshFormControls() {
@@ -485,7 +483,8 @@ public class HexViewer : Form, IExternalToolForm {
             return;
         }
 
-        int firstRow = _dataGridView.FirstDisplayedScrollingRowIndex;
+
+        int firstRow = CalculateFirstViewedRowIndex();
         if (firstRow < 0) {
             firstRow = 0;
         }
@@ -538,10 +537,6 @@ public class HexViewer : Form, IExternalToolForm {
             }
         }
         _table.EndLoadData();
-
-        if (_dataGridView.RowCount > 0 && firstRow >= 0 && firstRow < _dataGridView.RowCount && _dataGridView.FirstDisplayedScrollingRowIndex != firstRow) {
-            _dataGridView.FirstDisplayedScrollingRowIndex = firstRow;
-        }
     }
     
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData) {
@@ -651,9 +646,6 @@ public class HexViewer : Form, IExternalToolForm {
                 int col = Math.Min(cell.ColumnIndex, BytesPerRow - 1);
                 return (long)cell.RowIndex * BytesPerRow + col;
             }
-        }
-        if (_dataGridView.FirstDisplayedScrollingRowIndex >= 0) {
-            return (long)_dataGridView.FirstDisplayedScrollingRowIndex * BytesPerRow;
         }
         return 0;
     }
@@ -1144,8 +1136,8 @@ public class HexViewer : Form, IExternalToolForm {
             if (_dataGridView.CurrentCell != null) {
                 int col = Math.Min(_dataGridView.CurrentCell.ColumnIndex, BytesPerRow - 1);
                 currentAddress = (long)_dataGridView.CurrentCell.RowIndex * BytesPerRow + col;
-            } else if (_dataGridView.FirstDisplayedScrollingRowIndex >= 0) {
-                currentAddress = (long)_dataGridView.FirstDisplayedScrollingRowIndex * BytesPerRow;
+            } else if (CalculateFirstViewedRowIndex() >= 0) {
+                currentAddress = (long)CalculateFirstViewedRowIndex() * BytesPerRow;
             }
 
             long totalBytes = GetTotalMemorySize();
@@ -1172,10 +1164,6 @@ public class HexViewer : Form, IExternalToolForm {
         if (targetRow >= _dataGridView.RowCount) targetRow = _dataGridView.RowCount - 1;
         if (targetCol < 0) targetCol = 0;
         if (targetCol >= BytesPerRow) targetCol = BytesPerRow - 1;
-
-        if (_dataGridView.RowCount > 0 && targetRow >= 0 && targetRow < _dataGridView.RowCount) {
-            _dataGridView.FirstDisplayedScrollingRowIndex = targetRow;
-        }
 
         RefreshFormControls();
 
