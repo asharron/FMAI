@@ -47,6 +47,8 @@ public class HexViewer : Form, IExternalToolForm {
         KeyPreview = true;
         ClientSize = new Size(920, 380);
         MinimumSize = new Size(700, 260);
+        BackColor = Color.FromArgb(30, 30, 30);
+        ForeColor = Color.FromArgb(220, 220, 220);
         SuspendLayout();
 
         _table = new DataTable();
@@ -80,10 +82,10 @@ public class HexViewer : Form, IExternalToolForm {
 
         _dataGridView = new DataGridView {
             Dock = DockStyle.Fill,
-            BackgroundColor = Color.White,
+            BackgroundColor = Color.FromArgb(30, 30, 30),
             BorderStyle = BorderStyle.None,
             CellBorderStyle = DataGridViewCellBorderStyle.Single,
-            GridColor = Color.FromArgb(226, 230, 236),
+            GridColor = Color.FromArgb(50, 50, 50),
             AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
             ReadOnly = true,
@@ -102,33 +104,33 @@ public class HexViewer : Form, IExternalToolForm {
             DefaultCellStyle = new DataGridViewCellStyle {
                 Font = monoFont,
                 Alignment = DataGridViewContentAlignment.MiddleCenter,
-                BackColor = Color.White,
-                ForeColor = Color.FromArgb(20, 20, 20),
-                SelectionBackColor = Color.FromArgb(198, 226, 255),
-                SelectionForeColor = Color.FromArgb(0, 0, 0),
+                BackColor = Color.FromArgb(30, 30, 30),
+                ForeColor = Color.FromArgb(220, 220, 220),
+                SelectionBackColor = Color.FromArgb(38, 79, 120),
+                SelectionForeColor = Color.FromArgb(255, 255, 255),
                 Padding = new Padding(2, 0, 2, 0),
             },
             AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle {
                 Font = monoFont,
                 Alignment = DataGridViewContentAlignment.MiddleCenter,
-                BackColor = Color.FromArgb(246, 248, 250),
-                ForeColor = Color.FromArgb(20, 20, 20),
-                SelectionBackColor = Color.FromArgb(198, 226, 255),
-                SelectionForeColor = Color.FromArgb(0, 0, 0),
+                BackColor = Color.FromArgb(37, 37, 38),
+                ForeColor = Color.FromArgb(220, 220, 220),
+                SelectionBackColor = Color.FromArgb(38, 79, 120),
+                SelectionForeColor = Color.FromArgb(255, 255, 255),
                 Padding = new Padding(2, 0, 2, 0),
             },
             ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle {
                 Font = monoBoldFont,
                 Alignment = DataGridViewContentAlignment.MiddleCenter,
-                BackColor = Color.FromArgb(238, 241, 245),
-                ForeColor = Color.FromArgb(50, 55, 65),
+                BackColor = Color.FromArgb(45, 45, 48),
+                ForeColor = Color.FromArgb(200, 200, 200),
                 Padding = new Padding(0),
             },
             RowHeadersDefaultCellStyle = new DataGridViewCellStyle {
                 Font = monoBoldFont,
                 Alignment = DataGridViewContentAlignment.MiddleRight,
-                BackColor = Color.FromArgb(238, 241, 245),
-                ForeColor = Color.FromArgb(70, 75, 85),
+                BackColor = Color.FromArgb(45, 45, 48),
+                ForeColor = Color.FromArgb(140, 170, 200),
                 Padding = new Padding(0),
             },
         };
@@ -143,8 +145,8 @@ public class HexViewer : Form, IExternalToolForm {
             foreach (DataGridViewColumn col in _dataGridView.Columns) {
                 col.SortMode = DataGridViewColumnSortMode.NotSortable;
                 col.HeaderCell.Style.Font = monoBoldFont;
-                col.HeaderCell.Style.BackColor = Color.FromArgb(238, 241, 245);
-                col.HeaderCell.Style.ForeColor = Color.FromArgb(50, 55, 65);
+                col.HeaderCell.Style.BackColor = Color.FromArgb(45, 45, 48);
+                col.HeaderCell.Style.ForeColor = Color.FromArgb(200, 200, 200);
 
                 if (col.Index < BytesPerRow) {
                     col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
@@ -167,7 +169,8 @@ public class HexViewer : Form, IExternalToolForm {
             if (e.RowIndex >= 0 && e.ColumnIndex >= 0 && e.ColumnIndex < BytesPerRow) {
                 long address = (long)e.RowIndex * BytesPerRow + e.ColumnIndex;
                 if (_modifiedAddresses.Contains(address)) {
-                    e.CellStyle.BackColor = Color.LightYellow;
+                    e.CellStyle.BackColor = Color.FromArgb(80, 70, 20);
+                    e.CellStyle.ForeColor = Color.FromArgb(255, 235, 140);
                 }
             }
         };
@@ -294,10 +297,16 @@ public class HexViewer : Form, IExternalToolForm {
             }
         };
 
-        ContextMenuStrip contextMenu = new ContextMenuStrip();
+        ContextMenuStrip contextMenu = new ContextMenuStrip {
+            BackColor = Color.FromArgb(45, 45, 48),
+            ForeColor = Color.FromArgb(220, 220, 220),
+            ShowImageMargin = false
+        };
         ToolStripMenuItem jumpMenuItem = new ToolStripMenuItem("Jump to Address...", null, (sender, e) => OpenJumpToAddressDialog()) {
             ShortcutKeys = Keys.Control | Keys.J,
-            ShowShortcutKeys = true
+            ShowShortcutKeys = true,
+            BackColor = Color.FromArgb(45, 45, 48),
+            ForeColor = Color.FromArgb(220, 220, 220)
         };
         ToolStripMenuItem labelMenuItem = new ToolStripMenuItem("Address Label...", null, (sender, e) => {
             int? fullRow = GetSelectedFullRowIndex();
@@ -307,7 +316,9 @@ public class HexViewer : Form, IExternalToolForm {
                 OpenAddressLabelDialog(_dataGridView.CurrentCell.RowIndex);
             }
         }) {
-            ShortcutKeyDisplayString = "L"
+            ShortcutKeyDisplayString = "L",
+            BackColor = Color.FromArgb(45, 45, 48),
+            ForeColor = Color.FromArgb(220, 220, 220)
         };
         contextMenu.Items.Add(jumpMenuItem);
         contextMenu.Items.Add(labelMenuItem);
@@ -320,14 +331,14 @@ public class HexViewer : Form, IExternalToolForm {
         _rightPanel = new Panel {
             Dock = DockStyle.Right,
             Width = 240,
-            BackColor = Color.FromArgb(248, 249, 251),
+            BackColor = Color.FromArgb(37, 37, 38),
             Padding = new Padding(10, 8, 10, 10)
         };
 
         _selectedAddressLabel = new Label {
             Text = "Note for Address: $000000",
             Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-            ForeColor = Color.FromArgb(50, 55, 65),
+            ForeColor = Color.FromArgb(156, 220, 254),
             Dock = DockStyle.Top,
             Height = 26,
             TextAlign = ContentAlignment.MiddleLeft
@@ -343,7 +354,7 @@ public class HexViewer : Form, IExternalToolForm {
         _saveNoteButton = new Button {
             Text = "Save Note",
             Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-            BackColor = Color.FromArgb(0, 120, 215),
+            BackColor = Color.FromArgb(14, 99, 156),
             ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat,
             Dock = DockStyle.Top,
@@ -357,7 +368,7 @@ public class HexViewer : Form, IExternalToolForm {
         _statusLabel = new Label {
             Text = "",
             Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
-            ForeColor = Color.FromArgb(46, 125, 50),
+            ForeColor = Color.FromArgb(100, 200, 115),
             Dock = DockStyle.Bottom,
             Height = 20,
             TextAlign = ContentAlignment.MiddleLeft
@@ -371,8 +382,8 @@ public class HexViewer : Form, IExternalToolForm {
             ScrollBars = ScrollBars.Vertical,
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
-            BackColor = Color.White,
-            ForeColor = Color.FromArgb(20, 20, 20),
+            BackColor = Color.FromArgb(30, 30, 30),
+            ForeColor = Color.FromArgb(220, 220, 220),
             BorderStyle = BorderStyle.FixedSingle
         };
 
@@ -1027,17 +1038,23 @@ public class HexViewer : Form, IExternalToolForm {
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(280, 115);
             Font = new Font("Segoe UI", 9f, FontStyle.Regular);
+            BackColor = Color.FromArgb(37, 37, 38);
+            ForeColor = Color.FromArgb(220, 220, 220);
 
             Label label = new Label {
                 Text = "Enter Address (Hex):",
                 Location = new Point(14, 12),
-                AutoSize = true
+                AutoSize = true,
+                ForeColor = Color.FromArgb(220, 220, 220)
             };
 
             _addressTextBox = new TextBox {
                 Location = new Point(16, 34),
                 Size = new Size(248, 23),
                 Font = new Font("Consolas", 10f, FontStyle.Regular),
+                BackColor = Color.FromArgb(30, 30, 30),
+                ForeColor = Color.FromArgb(220, 220, 220),
+                BorderStyle = BorderStyle.FixedSingle,
                 Text = currentAddress >= 0 ? currentAddress.ToString("X") : "0"
             };
 
@@ -1045,16 +1062,24 @@ public class HexViewer : Form, IExternalToolForm {
                 Text = "Jump",
                 Location = new Point(108, 72),
                 Size = new Size(75, 26),
-                UseVisualStyleBackColor = true
+                BackColor = Color.FromArgb(14, 99, 156),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                UseVisualStyleBackColor = false
             };
+            okButton.FlatAppearance.BorderSize = 0;
 
             Button cancelButton = new Button {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
                 Location = new Point(189, 72),
                 Size = new Size(75, 26),
-                UseVisualStyleBackColor = true
+                BackColor = Color.FromArgb(60, 60, 60),
+                ForeColor = Color.FromArgb(220, 220, 220),
+                FlatStyle = FlatStyle.Flat,
+                UseVisualStyleBackColor = false
             };
+            cancelButton.FlatAppearance.BorderSize = 0;
 
             okButton.Click += (sender, e) => {
                 if (TryParseAddress(_addressTextBox.Text, out long parsedAddress)) {
@@ -1115,18 +1140,24 @@ public class HexViewer : Form, IExternalToolForm {
             StartPosition = FormStartPosition.CenterParent;
             ClientSize = new Size(320, 120);
             Font = new Font("Segoe UI", 9f, FontStyle.Regular);
+            BackColor = Color.FromArgb(37, 37, 38);
+            ForeColor = Color.FromArgb(220, 220, 220);
 
             Label label = new Label {
                 Text = $"Enter Address Label for ${address:X6}:",
                 Location = new Point(14, 12),
                 AutoSize = true,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(220, 220, 220)
             };
 
             _labelTextBox = new TextBox {
                 Location = new Point(16, 36),
                 Size = new Size(288, 23),
                 Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
+                BackColor = Color.FromArgb(30, 30, 30),
+                ForeColor = Color.FromArgb(220, 220, 220),
+                BorderStyle = BorderStyle.FixedSingle,
                 Text = currentLabel ?? ""
             };
 
@@ -1135,16 +1166,24 @@ public class HexViewer : Form, IExternalToolForm {
                 DialogResult = DialogResult.OK,
                 Location = new Point(148, 76),
                 Size = new Size(75, 26),
-                UseVisualStyleBackColor = true
+                BackColor = Color.FromArgb(14, 99, 156),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                UseVisualStyleBackColor = false
             };
+            okButton.FlatAppearance.BorderSize = 0;
 
             Button cancelButton = new Button {
                 Text = "Cancel",
                 DialogResult = DialogResult.Cancel,
                 Location = new Point(229, 76),
                 Size = new Size(75, 26),
-                UseVisualStyleBackColor = true
+                BackColor = Color.FromArgb(60, 60, 60),
+                ForeColor = Color.FromArgb(220, 220, 220),
+                FlatStyle = FlatStyle.Flat,
+                UseVisualStyleBackColor = false
             };
+            cancelButton.FlatAppearance.BorderSize = 0;
 
             AcceptButton = okButton;
             CancelButton = cancelButton;
