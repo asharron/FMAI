@@ -27,8 +27,6 @@ public class HexViewer : Form, IExternalToolForm {
     private readonly DataTable _table;
     private readonly DataGridView _dataGridView;
 
-    private Label debugLabel = new Label{AutoSize = true};
-
     public HexViewer() {
         ClientSize = new Size(480, 320);
         SuspendLayout();
@@ -229,7 +227,6 @@ public class HexViewer : Form, IExternalToolForm {
 
         _dataGridView.DataSource = _table;
 
-        Controls.Add(debugLabel);
         Controls.Add(_dataGridView);
 
         ResumeLayout(performLayout: false);
