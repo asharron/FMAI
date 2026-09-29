@@ -56,52 +56,78 @@ public class HexViewer : Form, IExternalToolForm {
         }
         _table.EndLoadData();
 
+        Font monoFont = new Font("Consolas", 9.5f, FontStyle.Regular);
+        Font monoBoldFont = new Font("Consolas", 9.5f, FontStyle.Bold);
+
         _dataGridView = new DataGridView {
             Dock = DockStyle.Fill,
-            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells,
+            BackgroundColor = Color.White,
+            BorderStyle = BorderStyle.None,
+            CellBorderStyle = DataGridViewCellBorderStyle.Single,
+            GridColor = Color.FromArgb(226, 230, 236),
+            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
             ReadOnly = true,
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false,
+            AllowUserToResizeColumns = false,
+            AllowUserToResizeRows = false,
             EnableHeadersVisualStyles = false,
-            RowHeadersWidth = 65,
-            ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle {
+            RowHeadersWidth = 70,
+            RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
+            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+            ColumnHeadersHeight = 26,
+            RowHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
+            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
+            Font = monoFont,
+            DefaultCellStyle = new DataGridViewCellStyle {
+                Font = monoFont,
                 Alignment = DataGridViewContentAlignment.MiddleCenter,
-                Padding = new Padding {
-                    All = 0,
-                    Top = 0,
-                    Bottom = 0,
-                    Left = 0,
-                    Right = 0,
-                }
+                BackColor = Color.White,
+                ForeColor = Color.FromArgb(20, 20, 20),
+                SelectionBackColor = Color.FromArgb(198, 226, 255),
+                SelectionForeColor = Color.FromArgb(0, 0, 0),
+                Padding = new Padding(2, 0, 2, 0),
+            },
+            AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle {
+                Font = monoFont,
+                Alignment = DataGridViewContentAlignment.MiddleCenter,
+                BackColor = Color.FromArgb(246, 248, 250),
+                ForeColor = Color.FromArgb(20, 20, 20),
+                SelectionBackColor = Color.FromArgb(198, 226, 255),
+                SelectionForeColor = Color.FromArgb(0, 0, 0),
+                Padding = new Padding(2, 0, 2, 0),
+            },
+            ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle {
+                Font = monoBoldFont,
+                Alignment = DataGridViewContentAlignment.MiddleCenter,
+                BackColor = Color.FromArgb(238, 241, 245),
+                ForeColor = Color.FromArgb(50, 55, 65),
+                Padding = new Padding(0),
+            },
+            RowHeadersDefaultCellStyle = new DataGridViewCellStyle {
+                Font = monoBoldFont,
+                Alignment = DataGridViewContentAlignment.MiddleRight,
+                BackColor = Color.FromArgb(238, 241, 245),
+                ForeColor = Color.FromArgb(70, 75, 85),
+                Padding = new Padding(0),
             },
         };
 
-        _dataGridView.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+        typeof(DataGridView).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            ?.SetValue(_dataGridView, true, null);
 
         _dataGridView.DataBindingComplete += (sender, e) => {
             _dataGridView.ClearSelection();
             _dataGridView.CurrentCell = null;
-            _dataGridView.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            _dataGridView.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            _dataGridView.ColumnHeadersDefaultCellStyle.Padding = new Padding {
-                All = 0,
-                Top = 0,
-                Bottom = 0,
-                Left = 0,
-                Right = 0,
-            };
 
             foreach (DataGridViewColumn col in _dataGridView.Columns) {
                 col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
                 col.SortMode = DataGridViewColumnSortMode.NotSortable;
-                col.HeaderCell.Style.Padding = new Padding {
-                    All = 0,
-                    Top = 0,
-                    Bottom = 0,
-                    Left = 0,
-                    Right = 0,
-                };
+                col.HeaderCell.Style.Font = monoBoldFont;
+                col.HeaderCell.Style.BackColor = Color.FromArgb(238, 241, 245);
+                col.HeaderCell.Style.ForeColor = Color.FromArgb(50, 55, 65);
+                col.HeaderCell.Style.Padding = new Padding(0);
             }
         };
 
@@ -109,80 +135,25 @@ public class HexViewer : Form, IExternalToolForm {
             if (e.ColumnIndex < 0 || e.RowIndex != -1) {
                 return;
             }
-            
+
             DataGridView? dgv = sender as DataGridView;
             if (dgv == null) return;
             SortOrder sort = dgv.Columns[e.ColumnIndex].HeaderCell.SortGlyphDirection;
 
             if (e.RowIndex == -1 && sort == SortOrder.None) {
                 string headerText = dgv.Columns[e.ColumnIndex].HeaderText;
-                Font headerFont = e.CellStyle.Font;
-                Brush headerBrush = new SolidBrush(e.CellStyle.ForeColor);
-                DataGridViewContentAlignment headerAlignment = e.CellStyle.Alignment;
+                Font headerFont = e.CellStyle.Font ?? monoBoldFont;
 
                 e.Paint(e.ClipBounds, (DataGridViewPaintParts.All & ~DataGridViewPaintParts.ContentForeground));
 
-                SizeF stringSize =
-                    TextRenderer.MeasureText(e.Graphics, headerText, e.CellStyle.Font, e.CellBounds.Size);
-                Rectangle p = e.CellBounds;
-                switch (headerAlignment) {
-                    case DataGridViewContentAlignment.TopCenter:
-                        p.Offset(
-                            e.CellBounds.Width / 2 - (int)(stringSize.Width / 2),
-                            0
-                        );
-                        break;
-                    case DataGridViewContentAlignment.TopRight:
-                        p.Offset(
-                            e.CellBounds.Width - (int)stringSize.Width,
-                            0
-                        );
-                        break;
-                    case DataGridViewContentAlignment.MiddleLeft:
-                        p.Offset(
-                            0,
-                            e.CellBounds.Height / 2 - (int)(stringSize.Height / 2)
-                        );
-                        break;
-                    case DataGridViewContentAlignment.MiddleCenter:
-                        p.Offset(
-                            e.CellBounds.Width / 2 - (int)(stringSize.Width / 2),
-                            e.CellBounds.Height / 2 - (int)(stringSize.Height / 2)
-                        );
-                        break;
-                    case DataGridViewContentAlignment.MiddleRight:
-                        p.Offset(
-                            e.CellBounds.Width - (int)stringSize.Width,
-                            e.CellBounds.Height / 2 - (int)(stringSize.Height / 2)
-                        );
-                        break;
-                    case DataGridViewContentAlignment.BottomLeft:
-                        p.Offset(
-                            0,
-                            e.CellBounds.Height - (int)stringSize.Height
-                        );
-                        break;
-                    case DataGridViewContentAlignment.BottomCenter:
-                        p.Offset(
-                            e.CellBounds.Width / 2 - (int)(stringSize.Width / 2),
-                            e.CellBounds.Height - (int)stringSize.Height
-                        );
-                        break;
-                    case DataGridViewContentAlignment.BottomRight:
-                        p.Offset(
-                            e.CellBounds.Width - (int)stringSize.Width,
-                            e.CellBounds.Height - (int)stringSize.Height
-                        );
-                        break;
-                    default:
-                        p.Offset(
-                            0,
-                            0
-                        );
-                        break;
-                }
-
-                e.Graphics.DrawString(headerText, headerFont, headerBrush, new PointF(p.X, p.Y));
+                TextRenderer.DrawText(
+                    e.Graphics,
+                    headerText,
+                    headerFont,
+                    e.CellBounds,
+                    e.CellStyle.ForeColor,
+                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                );
                 e.Handled = true;
             }
         };
@@ -197,21 +168,24 @@ public class HexViewer : Form, IExternalToolForm {
             // Format the text alignment inside the header
             TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.Right;
 
-            // Calculate bounds for drawing text
+            // Calculate bounds for drawing text with right margin
             Rectangle headerBounds = new Rectangle(
                 e.RowBounds.Left, 
                 e.RowBounds.Top, 
-                grid.RowHeadersWidth - 4, 
+                grid.RowHeadersWidth - 6, 
                 e.RowBounds.Height
             );
+
+            Font font = grid.RowHeadersDefaultCellStyle.Font ?? monoBoldFont;
+            Color foreColor = grid.RowHeadersDefaultCellStyle.ForeColor;
 
             // Draw the row header text
             TextRenderer.DrawText(
                 e.Graphics, 
                 addressText, 
-                grid.RowHeadersDefaultCellStyle.Font, 
+                font, 
                 headerBounds, 
-                grid.RowHeadersDefaultCellStyle.ForeColor, 
+                foreColor, 
                 flags
             );
         };
