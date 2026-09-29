@@ -207,11 +207,16 @@ public class HexViewer : Form, IExternalToolForm {
                 OpenJumpToAddressDialog();
                 e.Handled = true;
                 e.SuppressKeyPress = true;
+            } else if (HandleIncrementDecrementKey(e.KeyData)) {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
             }
         };
 
         _dataGridView.PreviewKeyDown += (sender, e) => {
             if (e.Control && e.KeyCode == Keys.J) {
+                e.IsInputKey = true;
+            } else if (!e.Control && !e.Alt && (e.KeyCode == Keys.Add || e.KeyCode == Keys.Oemplus || e.KeyCode == Keys.Subtract || e.KeyCode == Keys.OemMinus)) {
                 e.IsInputKey = true;
             }
         };
@@ -219,6 +224,9 @@ public class HexViewer : Form, IExternalToolForm {
         KeyDown += (sender, e) => {
             if (e.Control && e.KeyCode == Keys.J) {
                 OpenJumpToAddressDialog();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            } else if (HandleIncrementDecrementKey(e.KeyData)) {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
@@ -354,12 +362,18 @@ public class HexViewer : Form, IExternalToolForm {
             OpenJumpToAddressDialog();
             return true;
         }
+        if (HandleIncrementDecrementKey(keyData)) {
+            return true;
+        }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
     protected override bool ProcessDialogKey(Keys keyData) {
         if (keyData == (Keys.Control | Keys.J)) {
             OpenJumpToAddressDialog();
+            return true;
+        }
+        if (HandleIncrementDecrementKey(keyData)) {
             return true;
         }
         return base.ProcessDialogKey(keyData);
@@ -373,8 +387,66 @@ public class HexViewer : Form, IExternalToolForm {
                 OpenJumpToAddressDialog();
                 return true;
             }
+            if (HandleIncrementDecrementKey(key)) {
+                return true;
+            }
         }
         return base.ProcessKeyPreview(ref m);
+    }
+
+    private bool HandleIncrementDecrementKey(Keys keyData) {
+        if (_isJumpDialogOpen) return false;
+
+        bool isCtrl = (keyData & Keys.Control) != 0;
+        bool isAlt = (keyData & Keys.Alt) != 0;
+        if (isCtrl || isAlt) return false;
+
+        Keys keyCode = keyData & Keys.KeyCode;
+
+        if (keyCode == Keys.Add || keyCode == Keys.Oemplus) {
+            ModifySelectedCell(1);
+            return true;
+        }
+        if (keyCode == Keys.Subtract || keyCode == Keys.OemMinus) {
+            ModifySelectedCell(-1);
+            return true;
+        }
+        return false;
+    }
+
+    private void ModifySelectedCell(int delta) {
+        var selectedCells = _dataGridView.SelectedCells;
+        if (selectedCells.Count > 0) {
+            foreach (DataGridViewCell cell in selectedCells) {
+                ModifyCell(cell.RowIndex, cell.ColumnIndex, delta);
+            }
+        } else if (_dataGridView.CurrentCell != null) {
+            ModifyCell(_dataGridView.CurrentCell.RowIndex, _dataGridView.CurrentCell.ColumnIndex, delta);
+        }
+    }
+
+    private void ModifyCell(int row, int col, int delta) {
+        if (row < 0 || col < 0 || row >= _table.Rows.Count || col >= _table.Columns.Count) return;
+
+        long address = (long)row * _table.Columns.Count + col;
+        long totalBytes = GetTotalMemorySize();
+        if (address < 0 || address >= totalBytes) return;
+
+        byte currentVal = 0;
+        if (ApiContainer != null) {
+            currentVal = (byte)ApiContainer.Memory.ReadByte(address);
+        } else {
+            string str = _table.Rows[row][col]?.ToString() ?? "00";
+            byte.TryParse(str, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out currentVal);
+        }
+
+        byte newVal = (byte)(currentVal + delta);
+
+        if (ApiContainer != null) {
+            ApiContainer.Memory.WriteByte(address, newVal);
+        }
+
+        _table.Rows[row][col] = HexStrings[newVal];
     }
 
     public void OpenJumpToAddressDialog() {
