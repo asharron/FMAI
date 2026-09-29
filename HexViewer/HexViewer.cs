@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using BizHawk.Emulation.Common;
 using BizHawk.Client.Common;
 using System.Windows.Forms;
@@ -25,13 +28,22 @@ public class HexViewer : Form, IExternalToolForm {
     public bool AskSaveChanges() => true;
 
     private static readonly string[] HexStrings = Enumerable.Range(0, 256).Select(b => b.ToString("X2")).ToArray();
+    private readonly HashSet<long> _modifiedAddresses = new HashSet<long>();
+    private readonly Dictionary<long, string> _notes = new Dictionary<long, string>();
     private readonly DataTable _table;
     private readonly DataGridView _dataGridView;
+    private readonly TextBox _noteTextBox;
+    private readonly Label _selectedAddressLabel;
+    private readonly Label _statusLabel;
+    private readonly Button _saveNoteButton;
+    private readonly Panel _rightPanel;
+    private long _currentSelectedAddress = -1;
     private bool _isJumpDialogOpen;
 
     public HexViewer() {
         KeyPreview = true;
-        ClientSize = new Size(480, 320);
+        ClientSize = new Size(760, 360);
+        MinimumSize = new Size(620, 260);
         SuspendLayout();
 
         _table = new DataTable();
@@ -134,6 +146,15 @@ public class HexViewer : Form, IExternalToolForm {
             }
         };
 
+        _dataGridView.CellFormatting += (sender, e) => {
+            if (e.RowIndex >= 0 && e.ColumnIndex >= 0) {
+                long address = (long)e.RowIndex * _table.Columns.Count + e.ColumnIndex;
+                if (_modifiedAddresses.Contains(address)) {
+                    e.CellStyle.BackColor = Color.LightYellow;
+                }
+            }
+        };
+
         _dataGridView.CellPainting += (sender, e) => {
             if (e.ColumnIndex < 0 || e.RowIndex != -1) {
                 return;
@@ -168,10 +189,8 @@ public class HexViewer : Form, IExternalToolForm {
             long address = (long)e.RowIndex * _table.Columns.Count;
             string addressText = address.ToString("X6");
 
-            // Format the text alignment inside the header
             TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.Right;
 
-            // Calculate bounds for drawing text with right margin
             Rectangle headerBounds = new Rectangle(
                 e.RowBounds.Left, 
                 e.RowBounds.Top, 
@@ -182,7 +201,6 @@ public class HexViewer : Form, IExternalToolForm {
             Font font = grid.RowHeadersDefaultCellStyle.Font ?? monoBoldFont;
             Color foreColor = grid.RowHeadersDefaultCellStyle.ForeColor;
 
-            // Draw the row header text
             TextRenderer.DrawText(
                 e.Graphics, 
                 addressText, 
@@ -201,6 +219,9 @@ public class HexViewer : Form, IExternalToolForm {
         };
 
         _dataGridView.MouseWheel += (_, _) => RefreshFormControls();
+
+        _dataGridView.SelectionChanged += (sender, e) => UpdateSelectedCellNote();
+        _dataGridView.CurrentCellChanged += (sender, e) => UpdateSelectedCellNote();
 
         _dataGridView.KeyDown += (sender, e) => {
             if (e.Control && e.KeyCode == Keys.J) {
@@ -222,6 +243,14 @@ public class HexViewer : Form, IExternalToolForm {
         };
 
         KeyDown += (sender, e) => {
+            if (_noteTextBox != null && _noteTextBox.Focused) {
+                if (e.Control && e.KeyCode == Keys.S) {
+                    SaveCurrentNote();
+                    e.Handled = true;
+                    e.SuppressKeyPress = true;
+                }
+                return;
+            }
             if (e.Control && e.KeyCode == Keys.J) {
                 OpenJumpToAddressDialog();
                 e.Handled = true;
@@ -243,12 +272,90 @@ public class HexViewer : Form, IExternalToolForm {
 
         _dataGridView.DataSource = _table;
 
+        // Side Panel Setup (Text Area & Save Button on the right)
+        _rightPanel = new Panel {
+            Dock = DockStyle.Right,
+            Width = 240,
+            BackColor = Color.FromArgb(248, 249, 251),
+            Padding = new Padding(10, 8, 10, 10)
+        };
+
+        _selectedAddressLabel = new Label {
+            Text = "Note for Address: $000000",
+            Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+            ForeColor = Color.FromArgb(50, 55, 65),
+            Dock = DockStyle.Top,
+            Height = 26,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        Panel bottomPanel = new Panel {
+            Dock = DockStyle.Bottom,
+            Height = 58,
+            BackColor = Color.Transparent,
+            Padding = new Padding(0, 6, 0, 0)
+        };
+
+        _saveNoteButton = new Button {
+            Text = "Save Note",
+            Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+            BackColor = Color.FromArgb(0, 120, 215),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Dock = DockStyle.Top,
+            Height = 28,
+            Cursor = Cursors.Hand,
+            UseVisualStyleBackColor = false
+        };
+        _saveNoteButton.FlatAppearance.BorderSize = 0;
+        _saveNoteButton.Click += (sender, e) => SaveCurrentNote();
+
+        _statusLabel = new Label {
+            Text = "",
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
+            ForeColor = Color.FromArgb(46, 125, 50),
+            Dock = DockStyle.Bottom,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+
+        bottomPanel.Controls.Add(_saveNoteButton);
+        bottomPanel.Controls.Add(_statusLabel);
+
+        _noteTextBox = new TextBox {
+            Multiline = true,
+            ScrollBars = ScrollBars.Vertical,
+            Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
+            BackColor = Color.White,
+            ForeColor = Color.FromArgb(20, 20, 20),
+            BorderStyle = BorderStyle.FixedSingle
+        };
+
+        _noteTextBox.KeyDown += (sender, e) => {
+            if (e.Control && e.KeyCode == Keys.S) {
+                SaveCurrentNote();
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        };
+
+        _rightPanel.Controls.Add(_noteTextBox);
+        _rightPanel.Controls.Add(_selectedAddressLabel);
+        _rightPanel.Controls.Add(bottomPanel);
+
         Controls.Add(_dataGridView);
+        Controls.Add(_rightPanel);
+
+        LoadNotesFromDisk();
 
         ResumeLayout(performLayout: false);
         PerformLayout();
 
-        Load += (_, _) => IsLoaded = true;
+        Load += (_, _) => {
+            IsLoaded = true;
+            UpdateSelectedCellNote();
+        };
         Activated += (_, _) => IsActive = true;
         Deactivate += (_, _) => IsActive = false;
         FormClosed += (_, _) => IsLoaded = false;
@@ -256,6 +363,7 @@ public class HexViewer : Form, IExternalToolForm {
         Shown += (_, _) => {
             ApiContainer?.SaveState.LoadSlot(1);
             RefreshFormControls();
+            UpdateSelectedCellNote();
         };
     }
 
@@ -358,6 +466,13 @@ public class HexViewer : Form, IExternalToolForm {
     }
     
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData) {
+        if (_noteTextBox != null && _noteTextBox.Focused) {
+            if (keyData == (Keys.Control | Keys.S)) {
+                SaveCurrentNote();
+                return true;
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
+        }
         if (keyData == (Keys.Control | Keys.J)) {
             OpenJumpToAddressDialog();
             return true;
@@ -369,6 +484,13 @@ public class HexViewer : Form, IExternalToolForm {
     }
 
     protected override bool ProcessDialogKey(Keys keyData) {
+        if (_noteTextBox != null && _noteTextBox.Focused) {
+            if (keyData == (Keys.Control | Keys.S)) {
+                SaveCurrentNote();
+                return true;
+            }
+            return base.ProcessDialogKey(keyData);
+        }
         if (keyData == (Keys.Control | Keys.J)) {
             OpenJumpToAddressDialog();
             return true;
@@ -380,6 +502,9 @@ public class HexViewer : Form, IExternalToolForm {
     }
 
     protected override bool ProcessKeyPreview(ref Message m) {
+        if (_noteTextBox != null && _noteTextBox.Focused) {
+            return base.ProcessKeyPreview(ref m);
+        }
         const int WM_KEYDOWN = 0x0100;
         if (m.Msg == WM_KEYDOWN) {
             Keys key = (Keys)(int)m.WParam | ModifierKeys;
@@ -392,6 +517,138 @@ public class HexViewer : Form, IExternalToolForm {
             }
         }
         return base.ProcessKeyPreview(ref m);
+    }
+
+    private void UpdateSelectedCellNote() {
+        long address = GetCurrentSelectedAddress();
+        if (address < 0) {
+            _selectedAddressLabel.Text = "Note (No Selection):";
+            _noteTextBox.Text = "";
+            _statusLabel.Text = "";
+            _currentSelectedAddress = -1;
+            return;
+        }
+
+        if (address == _currentSelectedAddress) {
+            return;
+        }
+
+        _currentSelectedAddress = address;
+        _selectedAddressLabel.Text = $"Note for Address: ${address:X6}";
+        if (_notes.TryGetValue(address, out string? note)) {
+            _noteTextBox.Text = note ?? "";
+        } else {
+            _noteTextBox.Text = "";
+        }
+        _statusLabel.Text = "";
+    }
+
+    private long GetCurrentSelectedAddress() {
+        if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.RowIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex >= 0) {
+            return (long)_dataGridView.CurrentCell.RowIndex * _table.Columns.Count + _dataGridView.CurrentCell.ColumnIndex;
+        }
+        if (_dataGridView.SelectedCells.Count > 0) {
+            var cell = _dataGridView.SelectedCells[0];
+            if (cell.RowIndex >= 0 && cell.ColumnIndex >= 0) {
+                return (long)cell.RowIndex * _table.Columns.Count + cell.ColumnIndex;
+            }
+        }
+        if (_dataGridView.FirstDisplayedScrollingRowIndex >= 0) {
+            return (long)_dataGridView.FirstDisplayedScrollingRowIndex * _table.Columns.Count;
+        }
+        return 0;
+    }
+
+    public void SaveCurrentNote() {
+        long address = _currentSelectedAddress >= 0 ? _currentSelectedAddress : GetCurrentSelectedAddress();
+        if (address < 0) return;
+
+        string text = _noteTextBox.Text;
+        if (string.IsNullOrWhiteSpace(text)) {
+            _notes.Remove(address);
+        } else {
+            _notes[address] = text;
+        }
+
+        SaveNotesToDisk();
+        _statusLabel.Text = $"Saved note for ${address:X6}";
+    }
+
+    private static string GetNotesFilePath() {
+        try {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            if (!string.IsNullOrEmpty(baseDir) && Directory.Exists(baseDir)) {
+                return Path.Combine(baseDir, "hex_notes.json");
+            }
+        } catch { }
+        return "hex_notes.json";
+    }
+
+    private void LoadNotesFromDisk() {
+        try {
+            string path = GetNotesFilePath();
+            if (!File.Exists(path) && File.Exists("hex_notes.json")) {
+                path = "hex_notes.json";
+            }
+            if (File.Exists(path)) {
+                string content = File.ReadAllText(path);
+                ParseNotesJson(content);
+            }
+        } catch { }
+    }
+
+    private void SaveNotesToDisk() {
+        try {
+            string path = GetNotesFilePath();
+            string json = SerializeNotesJson();
+            File.WriteAllText(path, json, Encoding.UTF8);
+        } catch (Exception ex) {
+            MessageBox.Show(this, $"Failed to save note to disk: {ex.Message}", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private string SerializeNotesJson() {
+        var sb = new StringBuilder();
+        sb.AppendLine("{");
+        var sortedKeys = _notes.Keys.OrderBy(k => k).ToList();
+        for (int i = 0; i < sortedKeys.Count; i++) {
+            long address = sortedKeys[i];
+            string note = _notes[address] ?? "";
+            string escapedNote = note
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("\r", "\\r")
+                .Replace("\n", "\\n")
+                .Replace("\t", "\\t");
+            string trailing = (i == sortedKeys.Count - 1) ? "" : ",";
+            sb.AppendLine($"  \"{address:X6}\": \"{escapedNote}\"{trailing}");
+        }
+        sb.AppendLine("}");
+        return sb.ToString();
+    }
+
+    private void ParseNotesJson(string json) {
+        if (string.IsNullOrWhiteSpace(json)) return;
+        _notes.Clear();
+
+        var regex = new Regex("\"([^\"]+)\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"");
+        var matches = regex.Matches(json);
+        foreach (Match match in matches) {
+            if (match.Groups.Count >= 3) {
+                string keyStr = match.Groups[1].Value;
+                string valStr = match.Groups[2].Value;
+
+                if (TryParseAddress(keyStr, out long address)) {
+                    string unescaped = valStr
+                        .Replace("\\n", "\n")
+                        .Replace("\\r", "\r")
+                        .Replace("\\t", "\t")
+                        .Replace("\\\"", "\"")
+                        .Replace("\\\\", "\\");
+                    _notes[address] = unescaped;
+                }
+            }
+        }
     }
 
     private bool HandleIncrementDecrementKey(Keys keyData) {
@@ -446,7 +703,11 @@ public class HexViewer : Form, IExternalToolForm {
             ApiContainer.Memory.WriteByte(address, newVal);
         }
 
+        _modifiedAddresses.Add(address);
         _table.Rows[row][col] = HexStrings[newVal];
+        if (row < _dataGridView.RowCount && col < _dataGridView.ColumnCount) {
+            _dataGridView.InvalidateCell(col, row);
+        }
     }
 
     public void OpenJumpToAddressDialog() {
