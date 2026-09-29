@@ -25,6 +25,7 @@ public class HexViewer : Form, IExternalToolForm {
 
     private static readonly string[] HexStrings = Enumerable.Range(0, 256).Select(b => b.ToString("X2")).ToArray();
     private readonly DataTable _table;
+    private readonly DataGridView _dataGridView;
 
     public HexViewer() {
         ClientSize = new Size(480, 320);
@@ -55,7 +56,7 @@ public class HexViewer : Form, IExternalToolForm {
         }
         _table.EndLoadData();
 
-        var dataGridView = new DataGridView {
+        _dataGridView = new DataGridView {
             Dock = DockStyle.Fill,
             AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells,
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
@@ -75,12 +76,12 @@ public class HexViewer : Form, IExternalToolForm {
             },
         };
 
-        dataGridView.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+        _dataGridView.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
 
-        dataGridView.DataBindingComplete += (sender, e) => {
-            dataGridView.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridView.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dataGridView.ColumnHeadersDefaultCellStyle.Padding = new Padding {
+        _dataGridView.DataBindingComplete += (sender, e) => {
+            _dataGridView.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            _dataGridView.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+            _dataGridView.ColumnHeadersDefaultCellStyle.Padding = new Padding {
                 All = 0,
                 Top = 0,
                 Bottom = 0,
@@ -88,7 +89,7 @@ public class HexViewer : Form, IExternalToolForm {
                 Right = 0,
             };
 
-            foreach (DataGridViewColumn col in dataGridView.Columns) {
+            foreach (DataGridViewColumn col in _dataGridView.Columns) {
                 col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
                 col.SortMode = DataGridViewColumnSortMode.NotSortable;
                 col.HeaderCell.Style.Padding = new Padding {
@@ -101,7 +102,7 @@ public class HexViewer : Form, IExternalToolForm {
             }
         };
 
-        dataGridView.CellPainting += (sender, e) => {
+        _dataGridView.CellPainting += (sender, e) => {
             if (e.ColumnIndex < 0 || e.RowIndex != -1) {
                 return;
             }
@@ -183,7 +184,7 @@ public class HexViewer : Form, IExternalToolForm {
             }
         };
 
-        dataGridView.RowPostPaint += (sender, e) => {
+        _dataGridView.RowPostPaint += (sender, e) => {
             var grid = sender as DataGridView;
             if (grid == null) return;
 
@@ -212,9 +213,11 @@ public class HexViewer : Form, IExternalToolForm {
             );
         };
 
-        dataGridView.DataSource = _table;
+        _dataGridView.Scroll += (_, _) => RefreshFormControls();
 
-        Controls.Add(dataGridView);
+        _dataGridView.DataSource = _table;
+
+        Controls.Add(_dataGridView);
 
         ResumeLayout(performLayout: false);
         PerformLayout();
@@ -259,22 +262,55 @@ public class HexViewer : Form, IExternalToolForm {
 
         EnsureRows(totalBytes);
 
-        var bytes = ApiContainer.Memory.ReadByteRange(0, totalBytes);
+        if (_table.Rows.Count == 0) {
+            return;
+        }
+
+        int firstRow = _dataGridView.FirstDisplayedScrollingRowIndex;
+        if (firstRow < 0) {
+            firstRow = 0;
+        }
+
+        int visibleRowCount = _dataGridView.DisplayedRowCount(includePartialRow: true);
+        if (visibleRowCount <= 0) {
+            visibleRowCount = 50;
+        }
+
+        firstRow = Math.Min(firstRow, _table.Rows.Count - 1);
+        int lastRow = Math.Min(_table.Rows.Count - 1, firstRow + visibleRowCount - 1);
+        int rowsToRead = lastRow - firstRow + 1;
+
+        int cols = _table.Columns.Count;
+        long startAddress = (long)firstRow * cols;
+        int bytesToRead = rowsToRead * cols;
+
+        if (startAddress >= totalBytes) {
+            return;
+        }
+
+        if (startAddress + bytesToRead > totalBytes) {
+            bytesToRead = (int)(totalBytes - startAddress);
+        }
+
+        if (bytesToRead <= 0) {
+            return;
+        }
+
+        var bytes = ApiContainer.Memory.ReadByteRange(startAddress, bytesToRead);
         if (bytes == null) {
             return;
         }
 
         int count = bytes.Count;
-        int cols = _table.Columns.Count;
-        int rows = _table.Rows.Count;
+        for (int r = 0; r < rowsToRead; r++) {
+            int currentRow = firstRow + r;
+            DataRow dataRow = _table.Rows[currentRow];
+            int rowByteOffset = r * cols;
 
-        for (int row = 0; row < rows; row++) {
-            DataRow dataRow = _table.Rows[row];
-            int rowOffset = row * cols;
             for (int col = 0; col < cols; col++) {
-                int index = rowOffset + col;
-                if (index < count) {
-                    string hexValue = HexStrings[bytes[index]];
+                int byteIndex = rowByteOffset + col;
+                if (byteIndex < count) {
+                    string hexValue = HexStrings[bytes[byteIndex]];
                     if (!ReferenceEquals(dataRow[col], hexValue) && !Equals(dataRow[col], hexValue)) {
                         dataRow[col] = hexValue;
                     }
