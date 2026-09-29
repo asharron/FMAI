@@ -30,74 +30,76 @@ public class FmaiForm : Form, IExternalToolForm {
         // Loyd
         //////////////////////////////////////////
         // Health
-        new("Loyd", "Body Health",      0x00D580L, 1),
-        new("Loyd", "Body Health 256 Multiplier",      0x00D581L, 1),
-        new("Loyd", "Body Max Health",  0x00D582L, 1),
-        new("Loyd", "Body Max Health 256 Multiplier",  0x00D583L, 1),
-        new("Loyd", "Left Arm Health",     0x00D586L, 1),
-        new("Loyd", "Left Arm Health 256 Multiplier",     0x00D587L, 1),
-        new("Loyd", "Left Arm Max Health", 0x00D588L, 1),
-        new("Loyd", "Left Arm Max Health 256 Multiplier", 0x00D589L, 1),
-        new("Loyd", "Right Arm Health",     0x00D58CL, 1),
-        new("Loyd", "Right Arm Health 256 Multiplier",     0x00D58DL, 1),
-        new("Loyd", "Right Arm Max Health", 0x00D58EL, 1),
-        new("Loyd", "Right Arm Max Health 256 Multiplier", 0x00D58FL, 1),
-        new("Loyd", "Leg Health",     0x00D592L, 1),
-        new("Loyd", "Leg Health 256 Multiplier",     0x00D593L, 1),
-        new("Loyd", "Leg Max Health", 0x00D594L, 1),
-        new("Loyd", "Leg Max Health 256 Multiplier", 0x00D595L, 1),
+        new("Loyd", "Starting Address",      0x00D546, 1),
+        new("Loyd", "Body Health",      0x00D580, 1),
+        new("Loyd", "Body Health 256 Multiplier",      0x00D581, 1),
+        new("Loyd", "Body Max Health",  0x00D582, 1),
+        new("Loyd", "Body Max Health 256 Multiplier",  0x00D583, 1),
+        new("Loyd", "Left Arm Health",     0x00D586, 1),
+        new("Loyd", "Left Arm Health 256 Multiplier",     0x00D587, 1),
+        new("Loyd", "Left Arm Max Health", 0x00D588, 1),
+        new("Loyd", "Left Arm Max Health 256 Multiplier", 0x00D589, 1),
+        new("Loyd", "Right Arm Health",     0x00D58C, 1),
+        new("Loyd", "Right Arm Health 256 Multiplier",     0x00D58D, 1),
+        new("Loyd", "Right Arm Max Health", 0x00D58E, 1),
+        new("Loyd", "Right Arm Max Health 256 Multiplier", 0x00D58F, 1),
+        new("Loyd", "Leg Health",     0x00D592, 1),
+        new("Loyd", "Leg Health 256 Multiplier",     0x00D593, 1),
+        new("Loyd", "Leg Max Health", 0x00D594, 1),
+        new("Loyd", "Leg Max Health 256 Multiplier", 0x00D595, 1),
         
-        new("Loyd", "Item #1", 0x00D5BFL, 1),
-        new("Loyd", "Item #1 Category?", 0x00D5C0L, 1),
-        new("Loyd", "Item #2", 0x00D5C1L, 1),
-        new("Loyd", "Item #2 Category?", 0x00D5C2L, 1),
-        new("Loyd", "Item #3", 0x00D5C3L, 1),
-        new("Loyd", "Item #3 Category?", 0x00D5C4L, 1),
-        new("Loyd", "Item #4", 0x00D5C5L, 1),
-        new("Loyd", "Item #4 Category?", 0x00D5C6L, 1),
-        new("Loyd", "Item #5", 0x00D5C7L, 1),
-        new("Loyd", "Item #5 Category?", 0x00D5C8L, 1),
-        new("Loyd", "Item #6", 0x00D5C9L, 1),
-        new("Loyd", "Item #6 Category?", 0x00D5CAL, 1),
-        new("Loyd", "Item #7", 0x00D5CBL, 1),
-        new("Loyd", "Item #7 Category?", 0x00D5CCL, 1),
-        new("Loyd", "Item #8", 0x00D5CDL, 1),
-        new("Loyd", "Item #8 Category?", 0x00D5CEL, 1),
+        new("Loyd", "Item #1", 0x00D5BF, 1),
+        new("Loyd", "Item #1 Category?", 0x00D5C0, 1),
+        new("Loyd", "Item #2", 0x00D5C1, 1),
+        new("Loyd", "Item #2 Category?", 0x00D5C2, 1),
+        new("Loyd", "Item #3", 0x00D5C3, 1),
+        new("Loyd", "Item #3 Category?", 0x00D5C4, 1),
+        new("Loyd", "Item #4", 0x00D5C5, 1),
+        new("Loyd", "Item #4 Category?", 0x00D5C6, 1),
+        new("Loyd", "Item #5", 0x00D5C7, 1),
+        new("Loyd", "Item #5 Category?", 0x00D5C8, 1),
+        new("Loyd", "Item #6", 0x00D5C9, 1),
+        new("Loyd", "Item #6 Category?", 0x00D5CA, 1),
+        new("Loyd", "Item #7", 0x00D5CB, 1),
+        new("Loyd", "Item #7 Category?", 0x00D5CC, 1),
+        new("Loyd", "Item #8", 0x00D5CD, 1),
+        new("Loyd", "Item #8 Category?", 0x00D5CE, 1),
        
         
         
         
-        new("Loyd", "Body Item", 0x00D5B7L, 1),
+        new("Loyd", "Body Item", 0x00D5B7, 1),
         
-        new("Loyd", "L. Grip Item", 0x00D597L, 1),
-        new("Loyd", "L. Grip Max Range", 0x00D59AL, 1),
-        new("Loyd", "L. Grip Capacity", 0x00D59CL, 1),
-        new("Loyd", "L. Grip Max Capacity", 0x00D59DL, 1),
+        new("Loyd", "L. Grip Item", 0x00D597, 1),
+        new("Loyd", "L. Grip Max Range", 0x00D59A, 1),
+        new("Loyd", "L. Grip Capacity", 0x00D59C, 1),
+        new("Loyd", "L. Grip Max Capacity", 0x00D59D, 1),
         
         // Exp
-        new("Loyd", "Fight Stat Exp",      0x00D55DL, 1),
-        new("Loyd", "Fight Stat Exp 256 Multiplier",      0x00D55EL, 1),
-        new("Loyd", "Short Stat Exp",      0x00D55FL, 1),
-        new("Loyd", "Short Stat Exp 256 Multiplier",      0x00D560L, 1),
-        new("Loyd", "Long Stat Exp",      0x00D561L, 1),
-        new("Loyd", "Long Stat Exp 256 Multiplier",      0x00D562L, 1),
-        new("Loyd", "Agility Stat Exp",      0x00D563L, 1),
-        new("Loyd", "Agility Stat Exp 256 Multiplier",      0x00D564L, 1),
-        new("Loyd", "Skill #1", 0x00D565L, 1),
-        new("Loyd", "Skill #2", 0x00D566L, 1),
-        new("Loyd", "Skill #3", 0x00D567L, 1),
-        new("Loyd", "Skill #4", 0x00D568L, 1),
-        new("Loyd", "Skill #5", 0x00D569L, 1),
+        new("Loyd", "Fight Stat Exp",      0x00D55D, 1),
+        new("Loyd", "Fight Stat Exp 256 Multiplier",      0x00D55E, 1),
+        new("Loyd", "Short Stat Exp",      0x00D55F, 1),
+        new("Loyd", "Short Stat Exp 256 Multiplier",      0x00D560, 1),
+        new("Loyd", "Long Stat Exp",      0x00D561, 1),
+        new("Loyd", "Long Stat Exp 256 Multiplier",      0x00D562, 1),
+        new("Loyd", "Agility Stat Exp",      0x00D563, 1),
+        new("Loyd", "Agility Stat Exp 256 Multiplier",      0x00D564, 1),
+        new("Loyd", "Skill #1", 0x00D565, 1),
+        new("Loyd", "Skill #2", 0x00D566, 1),
+        new("Loyd", "Skill #3", 0x00D567, 1),
+        new("Loyd", "Skill #4", 0x00D568, 1),
+        new("Loyd", "Skill #5", 0x00D569, 1),
         
         // Turn
-        new("Loyd", "Has Turn Completed", 0x00D574L, 1),
-        new("Loyd", "X Position?", 0x00D548L, 1),
-        new("Loyd", "Y Position?", 0x00D54AL, 1),
-        new("Loyd", "Max Move",      0x00D56EL, 1),
+        new("Loyd", "Has Turn Completed", 0x00D574, 1),
+        new("Loyd", "X Position?", 0x00D548, 1),
+        new("Loyd", "Y Position?", 0x00D54A, 1),
+        new("Loyd", "Max Move",      0x00D56E, 1),
        
         // Sakata
         ///////////////////////////////////////////////
         // Health
+        new("Sakata", "Starting Address", 0x00D5D1, 1),
         new("Sakata", "Body Health", 0x00D60B, 1),
         new("Sakata", "Body Health 256 Multiplier", 0x00D60C, 1),
         new("Sakata", "Body Max Health", 0x00D60D, 1),
@@ -133,13 +135,14 @@ public class FmaiForm : Form, IExternalToolForm {
         
         // Turn
         new("Sakata", "Max Move", 0x00D5F9, 1),
-        new("Sakata", "X Position?", 0x00D5D3L, 1),
-        new("Sakata", "Y Position?", 0x00D5D5L, 1),
-        new("Sakata", "Has Turn Completed", 0x00D5FFL, 1),
+        new("Sakata", "X Position?", 0x00D5D3, 1),
+        new("Sakata", "Y Position?", 0x00D5D5, 1),
+        new("Sakata", "Has Turn Completed", 0x00D5FF, 1),
        
       
         // Kalen
         ///////////////////////////////////
+        new("Kalen", "Starting Address", 0x00D65C, 1),
         new("Kalen", "Body Health", 0x00D696, 1),
         new("Kalen", "Body Health Multiplier", 0x00D697, 1),
         new("Kalen", "Body Max Health", 0x00D698, 1),
@@ -179,7 +182,7 @@ public class FmaiForm : Form, IExternalToolForm {
         
         // Enemy
         ///////////////////////////
-        new("Enemy 1", "Leg Health", 0x00D849L, 1),
+        new("Enemy 1", "Leg Health", 0x00D849, 1),
     ];
 
     private readonly List<(RamValue RamValue, Label Label)> rows =
