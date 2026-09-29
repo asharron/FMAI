@@ -32,6 +32,7 @@ public class HexViewer : Form, IExternalToolForm {
     private readonly HashSet<long> _modifiedAddresses = new HashSet<long>();
     private readonly Dictionary<long, string> _notes = new Dictionary<long, string>();
     private readonly Dictionary<long, string> _labels = new Dictionary<long, string>();
+    private readonly Dictionary<long, string> _colors = new Dictionary<long, string>();
     private readonly DataTable _table;
     private readonly DataGridView _dataGridView;
     private readonly TextBox _noteTextBox;
@@ -42,6 +43,7 @@ public class HexViewer : Form, IExternalToolForm {
     private long _currentSelectedAddress = -1;
     private bool _isJumpDialogOpen;
     private bool _isLabelDialogOpen;
+    private bool _isColorDialogOpen;
 
     public HexViewer() {
         KeyPreview = true;
@@ -168,7 +170,10 @@ public class HexViewer : Form, IExternalToolForm {
         _dataGridView.CellFormatting += (sender, e) => {
             if (e.RowIndex >= 0 && e.ColumnIndex >= 0 && e.ColumnIndex < BytesPerRow) {
                 long address = (long)e.RowIndex * BytesPerRow + e.ColumnIndex;
-                if (_modifiedAddresses.Contains(address)) {
+                if (_colors.TryGetValue(address, out string? colorName) && !string.IsNullOrEmpty(colorName) && TryGetColorStyle(colorName, out Color backColor, out Color foreColor)) {
+                    e.CellStyle.BackColor = backColor;
+                    e.CellStyle.ForeColor = foreColor;
+                } else if (_modifiedAddresses.Contains(address)) {
                     e.CellStyle.BackColor = Color.FromArgb(80, 70, 20);
                     e.CellStyle.ForeColor = Color.FromArgb(255, 235, 140);
                 }
@@ -262,6 +267,9 @@ public class HexViewer : Form, IExternalToolForm {
             } else if (HandleAddressLabelKey(e.KeyData)) {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
+            } else if (HandleColorKey(e.KeyData)) {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
             }
         };
 
@@ -271,6 +279,8 @@ public class HexViewer : Form, IExternalToolForm {
             } else if (!e.Control && !e.Alt && (e.KeyCode == Keys.Add || e.KeyCode == Keys.Oemplus || e.KeyCode == Keys.Subtract || e.KeyCode == Keys.OemMinus)) {
                 e.IsInputKey = true;
             } else if (!e.Control && !e.Alt && e.KeyCode == Keys.L && GetSelectedFullRowIndex() != null) {
+                e.IsInputKey = true;
+            } else if (!e.Control && !e.Alt && e.KeyCode == Keys.C) {
                 e.IsInputKey = true;
             }
         };
@@ -292,6 +302,9 @@ public class HexViewer : Form, IExternalToolForm {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             } else if (HandleAddressLabelKey(e.KeyData)) {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            } else if (HandleColorKey(e.KeyData)) {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
             }
@@ -320,8 +333,14 @@ public class HexViewer : Form, IExternalToolForm {
             BackColor = Color.FromArgb(45, 45, 48),
             ForeColor = Color.FromArgb(220, 220, 220)
         };
+        ToolStripMenuItem colorMenuItem = new ToolStripMenuItem("Select Color...", null, (sender, e) => OpenColorDialogForSelectedCells()) {
+            ShortcutKeyDisplayString = "C",
+            BackColor = Color.FromArgb(45, 45, 48),
+            ForeColor = Color.FromArgb(220, 220, 220)
+        };
         contextMenu.Items.Add(jumpMenuItem);
         contextMenu.Items.Add(labelMenuItem);
+        contextMenu.Items.Add(colorMenuItem);
         _dataGridView.ContextMenuStrip = contextMenu;
         ContextMenuStrip = contextMenu;
 
@@ -404,6 +423,7 @@ public class HexViewer : Form, IExternalToolForm {
 
         LoadNotesFromDisk();
         LoadLabelsFromDisk();
+        LoadColorsFromDisk();
 
         ResumeLayout(performLayout: false);
         PerformLayout();
@@ -542,6 +562,9 @@ public class HexViewer : Form, IExternalToolForm {
         if (HandleAddressLabelKey(keyData)) {
             return true;
         }
+        if (HandleColorKey(keyData)) {
+            return true;
+        }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
@@ -563,6 +586,9 @@ public class HexViewer : Form, IExternalToolForm {
         if (HandleAddressLabelKey(keyData)) {
             return true;
         }
+        if (HandleColorKey(keyData)) {
+            return true;
+        }
         return base.ProcessDialogKey(keyData);
     }
 
@@ -581,6 +607,9 @@ public class HexViewer : Form, IExternalToolForm {
                 return true;
             }
             if (HandleAddressLabelKey(key)) {
+                return true;
+            }
+            if (HandleColorKey(key)) {
                 return true;
             }
         }
@@ -646,7 +675,7 @@ public class HexViewer : Form, IExternalToolForm {
     }
 
     private bool HandleAddressLabelKey(Keys keyData) {
-        if (_isJumpDialogOpen || _isLabelDialogOpen) return false;
+        if (_isJumpDialogOpen || _isLabelDialogOpen || _isColorDialogOpen) return false;
         if (_noteTextBox != null && _noteTextBox.Focused) return false;
 
         bool isCtrl = (keyData & Keys.Control) != 0;
@@ -662,6 +691,92 @@ public class HexViewer : Form, IExternalToolForm {
             }
         }
         return false;
+    }
+
+    private bool HandleColorKey(Keys keyData) {
+        if (_isJumpDialogOpen || _isLabelDialogOpen || _isColorDialogOpen) return false;
+        if (_noteTextBox != null && _noteTextBox.Focused) return false;
+
+        bool isCtrl = (keyData & Keys.Control) != 0;
+        bool isAlt = (keyData & Keys.Alt) != 0;
+        if (isCtrl || isAlt) return false;
+
+        Keys keyCode = keyData & Keys.KeyCode;
+        if (keyCode == Keys.C) {
+            OpenColorDialogForSelectedCells();
+            return true;
+        }
+        return false;
+    }
+
+    private List<long> GetSelectedCellAddresses() {
+        var addresses = new List<long>();
+        if (_dataGridView.SelectedCells.Count > 0) {
+            foreach (DataGridViewCell cell in _dataGridView.SelectedCells) {
+                if (cell.RowIndex >= 0 && cell.ColumnIndex >= 0 && cell.ColumnIndex < BytesPerRow && cell.RowIndex < _table.Rows.Count) {
+                    addresses.Add((long)cell.RowIndex * BytesPerRow + cell.ColumnIndex);
+                }
+            }
+        } else if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.RowIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex < BytesPerRow && _dataGridView.CurrentCell.RowIndex < _table.Rows.Count) {
+            addresses.Add((long)_dataGridView.CurrentCell.RowIndex * BytesPerRow + _dataGridView.CurrentCell.ColumnIndex);
+        }
+        return addresses.Distinct().OrderBy(a => a).ToList();
+    }
+
+    public void OpenColorDialogForSelectedCells() {
+        if (_isColorDialogOpen) return;
+        var selectedAddresses = GetSelectedCellAddresses();
+        if (selectedAddresses.Count == 0) return;
+
+        _isColorDialogOpen = true;
+        try {
+            string initialColor = "";
+            if (_colors.TryGetValue(selectedAddresses[0], out string? existingColor) && !string.IsNullOrEmpty(existingColor)) {
+                initialColor = existingColor;
+            }
+
+            using var dialog = new SelectColorDialog(selectedAddresses.Count, initialColor);
+            if (dialog.ShowDialog(this) == DialogResult.OK) {
+                string chosenColor = dialog.SelectedColor;
+                if (string.IsNullOrWhiteSpace(chosenColor) || chosenColor.Equals("None", StringComparison.OrdinalIgnoreCase)) {
+                    foreach (long addr in selectedAddresses) {
+                        _colors.Remove(addr);
+                    }
+                } else {
+                    foreach (long addr in selectedAddresses) {
+                        _colors[addr] = chosenColor;
+                    }
+                }
+                SaveColorsToDisk();
+                _dataGridView.Invalidate();
+            }
+        } finally {
+            _isColorDialogOpen = false;
+        }
+    }
+
+    public static bool TryGetColorStyle(string colorName, out Color backColor, out Color foreColor) {
+        foreColor = Color.White;
+        switch (colorName.Trim().ToLowerInvariant()) {
+            case "blue":
+                backColor = Color.FromArgb(30, 90, 180);
+                return true;
+            case "red":
+                backColor = Color.FromArgb(160, 35, 35);
+                return true;
+            case "green":
+                backColor = Color.FromArgb(35, 125, 50);
+                return true;
+            case "orange":
+                backColor = Color.FromArgb(190, 95, 20);
+                return true;
+            case "purple":
+                backColor = Color.FromArgb(120, 45, 150);
+                return true;
+            default:
+                backColor = Color.Empty;
+                return false;
+        }
     }
 
     public void OpenAddressLabelDialog(int rowIndex) {
@@ -869,8 +984,85 @@ public class HexViewer : Form, IExternalToolForm {
         }
     }
 
+    private static string GetColorsFilePath() {
+        try {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            if (!string.IsNullOrEmpty(baseDir) && Directory.Exists(baseDir)) {
+                return Path.Combine(baseDir, "hex_colors.json");
+            }
+        } catch { }
+        return "hex_colors.json";
+    }
+
+    private void LoadColorsFromDisk() {
+        try {
+            string path = GetColorsFilePath();
+            if (!File.Exists(path) && File.Exists("hex_colors.json")) {
+                path = "hex_colors.json";
+            }
+            if (File.Exists(path)) {
+                string content = File.ReadAllText(path);
+                ParseColorsJson(content);
+            }
+        } catch { }
+    }
+
+    private void SaveColorsToDisk() {
+        try {
+            string path = GetColorsFilePath();
+            string json = SerializeColorsJson();
+            File.WriteAllText(path, json, Encoding.UTF8);
+        } catch (Exception ex) {
+            MessageBox.Show(this, $"Failed to save cell colors to disk: {ex.Message}", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private string SerializeColorsJson() {
+        var sb = new StringBuilder();
+        sb.AppendLine("{");
+        var sortedKeys = _colors.Keys.OrderBy(k => k).ToList();
+        for (int i = 0; i < sortedKeys.Count; i++) {
+            long address = sortedKeys[i];
+            string color = _colors[address] ?? "";
+            string escapedColor = color
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("\r", "\\r")
+                .Replace("\n", "\\n")
+                .Replace("\t", "\\t");
+            string trailing = (i == sortedKeys.Count - 1) ? "" : ",";
+            sb.AppendLine($"  \"{address:X6}\": \"{escapedColor}\"{trailing}");
+        }
+        sb.AppendLine("}");
+        return sb.ToString();
+    }
+
+    private void ParseColorsJson(string json) {
+        if (string.IsNullOrWhiteSpace(json)) return;
+        _colors.Clear();
+
+        var regex = new Regex("\"([^\"]+)\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"");
+        var matches = regex.Matches(json);
+        foreach (Match match in matches) {
+            if (match.Groups.Count >= 3) {
+                string keyStr = match.Groups[1].Value;
+                string valStr = match.Groups[2].Value;
+
+                if (TryParseAddress(keyStr, out long address)) {
+                    string unescaped = valStr
+                        .Replace("\\n", "\n")
+                        .Replace("\\r", "\r")
+                        .Replace("\\t", "\t")
+                        .Replace("\\\"", "\"")
+                        .Replace("\\\\", "\\");
+                    _colors[address] = unescaped;
+                }
+            }
+        }
+    }
+
     private bool HandleIncrementDecrementKey(Keys keyData) {
-        if (_isJumpDialogOpen || _isLabelDialogOpen) return false;
+        if (_isJumpDialogOpen || _isLabelDialogOpen || _isColorDialogOpen) return false;
         if (_noteTextBox != null && _noteTextBox.Focused) return false;
 
         bool isCtrl = (keyData & Keys.Control) != 0;
@@ -1210,6 +1402,93 @@ public class HexViewer : Form, IExternalToolForm {
             Shown += (_, _) => {
                 _labelTextBox.Focus();
                 _labelTextBox.SelectAll();
+            };
+        }
+    }
+
+    private sealed class SelectColorDialog : Form {
+        private readonly ComboBox _colorComboBox;
+        public string SelectedColor => _colorComboBox.SelectedItem?.ToString() ?? "Blue";
+
+        public SelectColorDialog(int cellCount, string initialColor) {
+            Text = "Select Cell Color";
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(300, 120);
+            Font = new Font("Segoe UI", 9f, FontStyle.Regular);
+            BackColor = Color.FromArgb(37, 37, 38);
+            ForeColor = Color.FromArgb(220, 220, 220);
+
+            string targetText = cellCount > 1 ? $"{cellCount} cells" : "selected cell";
+            Label label = new Label {
+                Text = $"Select Color for {targetText}:",
+                Location = new Point(14, 12),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+                ForeColor = Color.FromArgb(220, 220, 220)
+            };
+
+            _colorComboBox = new ComboBox {
+                Location = new Point(16, 36),
+                Size = new Size(268, 24),
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
+                BackColor = Color.FromArgb(30, 30, 30),
+                ForeColor = Color.FromArgb(220, 220, 220),
+                FlatStyle = FlatStyle.Flat
+            };
+
+            string[] colorOptions = ["Blue", "Red", "Green", "Orange", "Purple"];
+            _colorComboBox.Items.AddRange(colorOptions);
+
+            int selectedIndex = 0;
+            if (!string.IsNullOrWhiteSpace(initialColor)) {
+                for (int i = 0; i < colorOptions.Length; i++) {
+                    if (string.Equals(colorOptions[i], initialColor, StringComparison.OrdinalIgnoreCase)) {
+                        selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+            _colorComboBox.SelectedIndex = selectedIndex;
+
+            Button okButton = new Button {
+                Text = "Apply",
+                DialogResult = DialogResult.OK,
+                Location = new Point(128, 76),
+                Size = new Size(75, 26),
+                BackColor = Color.FromArgb(14, 99, 156),
+                ForeColor = Color.White,
+                FlatStyle = FlatStyle.Flat,
+                UseVisualStyleBackColor = false
+            };
+            okButton.FlatAppearance.BorderSize = 0;
+
+            Button cancelButton = new Button {
+                Text = "Cancel",
+                DialogResult = DialogResult.Cancel,
+                Location = new Point(209, 76),
+                Size = new Size(75, 26),
+                BackColor = Color.FromArgb(60, 60, 60),
+                ForeColor = Color.FromArgb(220, 220, 220),
+                FlatStyle = FlatStyle.Flat,
+                UseVisualStyleBackColor = false
+            };
+            cancelButton.FlatAppearance.BorderSize = 0;
+
+            AcceptButton = okButton;
+            CancelButton = cancelButton;
+
+            Controls.Add(label);
+            Controls.Add(_colorComboBox);
+            Controls.Add(okButton);
+            Controls.Add(cancelButton);
+
+            Shown += (_, _) => {
+                _colorComboBox.Focus();
             };
         }
     }
