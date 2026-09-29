@@ -1,18 +1,15 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
+using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
-using BizHawk.Emulation.Common;
-using BizHawk.Client.Common;
 using System.Windows.Forms;
-using System.Drawing;
-using System.Reflection;
-using System.Runtime.Remoting.Channels;
-using System.Windows.Forms.VisualStyles;
+using BizHawk.Client.Common;
+using BizHawk.Emulation.Common;
 using ContentAlignment = System.Drawing.ContentAlignment;
 
 namespace FMAI;
@@ -24,350 +21,91 @@ public class HexViewer : Form, IExternalToolForm {
     public bool IsLoaded { get; private set; }
 
     [RequiredApi] public ApiContainer? ApiContainer { get; set; }
-
     [RequiredApi] public IEmulationApi? EmulationApi { get; set; }
+
     public void UpdateValues(ToolFormUpdateType type) => RefreshFormControls();
-    public void Restart() => RefreshFormControls();
+    public void Restart() {
+        _contextKey = null;          // force reload of per-game/per-domain data
+        _modifiedAddresses.Clear();
+        RefreshFormControls();
+    }
     public bool AskSaveChanges() => true;
 
+    // ---------------------------------------------------------------- constants
+
     private const int BytesPerRow = 16;
+    private const int RowHeight = 22;
+    private const int PageRows = 64;                       // rows per cached page (64 * 16 = 1 KB)
+    private const long DefaultMemorySize = 0x20000;
     private static readonly string[] HexStrings = Enumerable.Range(0, 256).Select(b => b.ToString("X2")).ToArray();
-    private readonly HashSet<long> _modifiedAddresses = new HashSet<long>();
-    private readonly Dictionary<long, string> _notes = new Dictionary<long, string>();
-    private readonly Dictionary<long, string> _labels = new Dictionary<long, string>();
-    private readonly Dictionary<long, string> _colors = new Dictionary<long, string>();
-    private readonly DataTable _table;
+
+    // ---------------------------------------------------------------- state
+
+    private readonly HashSet<long> _modifiedAddresses = new();
+    private readonly Dictionary<long, string> _notes = new();
+    private readonly Dictionary<long, string> _labels = new();
+    private readonly Dictionary<long, string> _colors = new();
+
+    // Virtual-mode byte cache: page index -> bytes. Cleared on every refresh so the
+    // next paint re-reads only the pages that are actually on screen.
+    private readonly Dictionary<int, byte[]> _pages = new();
+
     private readonly DataGridView _dataGridView;
     private readonly TextBox _noteTextBox;
     private readonly Label _selectedAddressLabel;
     private readonly Label _statusLabel;
-    private readonly Button _saveNoteButton;
-    private readonly Panel _rightPanel;
+
+    private long _totalBytes;
     private long _currentSelectedAddress = -1;
-    private bool _isJumpDialogOpen;
-    private bool _isLabelDialogOpen;
-    private bool _isColorDialogOpen;
+    private string? _contextKey;       // "rom|domain"
+    private string _dataPrefix = "";   // file path prefix for the current context
+
+    // ---------------------------------------------------------------- ctor
 
     public HexViewer() {
-        KeyPreview = true;
         ClientSize = new Size(920, 380);
+        KeyPreview = true;
+        KeyDown += (_, e) => {
+            if (TryHandleShortcut(e.KeyData)) {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
+            }
+        };
         MinimumSize = new Size(700, 260);
-        BackColor = Color.FromArgb(30, 30, 30);
-        ForeColor = Color.FromArgb(220, 220, 220);
+        BackColor = Theme.Back;
+        ForeColor = Theme.Fore;
         SuspendLayout();
 
-        _table = new DataTable();
+        _dataGridView = BuildGrid();
 
-        _table.Columns.Add("0");
-        _table.Columns.Add("1");
-        _table.Columns.Add("2");
-        _table.Columns.Add("3");
-        _table.Columns.Add("4");
-        _table.Columns.Add("5");
-        _table.Columns.Add("6");
-        _table.Columns.Add("7");
-        _table.Columns.Add("8");
-        _table.Columns.Add("9");
-        _table.Columns.Add("A");
-        _table.Columns.Add("B");
-        _table.Columns.Add("C");
-        _table.Columns.Add("D");
-        _table.Columns.Add("E");
-        _table.Columns.Add("F");
-        _table.Columns.Add("Label", typeof(string));
-
-        _table.BeginLoadData();
-        for (int i = 0; i < 8192; i++) {
-            _table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "");
-        }
-        _table.EndLoadData();
-
-        Font monoFont = new Font("Consolas", 9.5f, FontStyle.Regular);
-        Font monoBoldFont = new Font("Consolas", 9.5f, FontStyle.Bold);
-
-        _dataGridView = new DataGridView {
-            Dock = DockStyle.Fill,
-            BackgroundColor = Color.FromArgb(30, 30, 30),
-            BorderStyle = BorderStyle.None,
-            CellBorderStyle = DataGridViewCellBorderStyle.Single,
-            GridColor = Color.FromArgb(50, 50, 50),
-            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
-            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells,
-            ReadOnly = true,
-            AllowUserToAddRows = false,
-            AllowUserToDeleteRows = false,
-            AllowUserToResizeColumns = false,
-            AllowUserToResizeRows = false,
-            EnableHeadersVisualStyles = false,
-            RowHeadersWidth = 70,
-            RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
-            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
-            ColumnHeadersHeight = 26,
-            RowHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
-            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
-            Font = monoFont,
-            DefaultCellStyle = new DataGridViewCellStyle {
-                Font = monoFont,
-                Alignment = DataGridViewContentAlignment.MiddleCenter,
-                BackColor = Color.FromArgb(30, 30, 30),
-                ForeColor = Color.FromArgb(220, 220, 220),
-                SelectionBackColor = Color.FromArgb(38, 79, 120),
-                SelectionForeColor = Color.FromArgb(255, 255, 255),
-                Padding = new Padding(2, 0, 2, 0),
-            },
-            AlternatingRowsDefaultCellStyle = new DataGridViewCellStyle {
-                Font = monoFont,
-                Alignment = DataGridViewContentAlignment.MiddleCenter,
-                BackColor = Color.FromArgb(37, 37, 38),
-                ForeColor = Color.FromArgb(220, 220, 220),
-                SelectionBackColor = Color.FromArgb(38, 79, 120),
-                SelectionForeColor = Color.FromArgb(255, 255, 255),
-                Padding = new Padding(2, 0, 2, 0),
-            },
-            ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle {
-                Font = monoBoldFont,
-                Alignment = DataGridViewContentAlignment.MiddleCenter,
-                BackColor = Color.FromArgb(45, 45, 48),
-                ForeColor = Color.FromArgb(200, 200, 200),
-                Padding = new Padding(0),
-            },
-            RowHeadersDefaultCellStyle = new DataGridViewCellStyle {
-                Font = monoBoldFont,
-                Alignment = DataGridViewContentAlignment.MiddleRight,
-                BackColor = Color.FromArgb(45, 45, 48),
-                ForeColor = Color.FromArgb(140, 170, 200),
-                Padding = new Padding(0),
-            },
-        };
-
-        typeof(DataGridView).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-            ?.SetValue(_dataGridView, true, null);
-
-        _dataGridView.DataBindingComplete += (sender, e) => {
-            _dataGridView.ClearSelection();
-            _dataGridView.CurrentCell = null;
-
-            foreach (DataGridViewColumn col in _dataGridView.Columns) {
-                col.SortMode = DataGridViewColumnSortMode.NotSortable;
-                col.HeaderCell.Style.Font = monoBoldFont;
-                col.HeaderCell.Style.BackColor = Color.FromArgb(45, 45, 48);
-                col.HeaderCell.Style.ForeColor = Color.FromArgb(200, 200, 200);
-
-                if (col.Index < BytesPerRow) {
-                    col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                    col.HeaderCell.Style.Padding = new Padding(0);
-                    col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                } else {
-                    col.HeaderText = "Label";
-                    col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleLeft;
-                    col.HeaderCell.Style.Padding = new Padding(6, 0, 0, 0);
-                    col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
-                    col.DefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
-                    col.DefaultCellStyle.Font = new Font("Segoe UI", 9f, FontStyle.Regular);
-                    col.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
-                    col.MinimumWidth = 120;
-                }
-            }
-        };
-
-        _dataGridView.CellFormatting += (sender, e) => {
-            if (e.RowIndex >= 0 && e.ColumnIndex >= 0 && e.ColumnIndex < BytesPerRow) {
-                long address = (long)e.RowIndex * BytesPerRow + e.ColumnIndex;
-                if (_colors.TryGetValue(address, out string? colorName) && !string.IsNullOrEmpty(colorName) && TryGetColorStyle(colorName, out Color backColor, out Color foreColor)) {
-                    e.CellStyle.BackColor = backColor;
-                    e.CellStyle.ForeColor = foreColor;
-                } else if (_modifiedAddresses.Contains(address)) {
-                    e.CellStyle.BackColor = Color.FromArgb(80, 70, 20);
-                    e.CellStyle.ForeColor = Color.FromArgb(255, 235, 140);
-                }
-            }
-        };
-
-        _dataGridView.CellPainting += (sender, e) => {
-            if (e.ColumnIndex < 0 || e.RowIndex != -1) {
-                return;
-            }
-
-            DataGridView? dgv = sender as DataGridView;
-            if (dgv == null) return;
-            SortOrder sort = dgv.Columns[e.ColumnIndex].HeaderCell.SortGlyphDirection;
-
-            if (e.RowIndex == -1 && sort == SortOrder.None) {
-                string headerText = dgv.Columns[e.ColumnIndex].HeaderText;
-                Font headerFont = e.CellStyle.Font ?? monoBoldFont;
-
-                e.Paint(e.ClipBounds, (DataGridViewPaintParts.All & ~DataGridViewPaintParts.ContentForeground));
-
-                TextFormatFlags flags = e.ColumnIndex < BytesPerRow
-                    ? (TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter)
-                    : (TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
-
-                Rectangle textBounds = e.ColumnIndex < BytesPerRow
-                    ? e.CellBounds
-                    : new Rectangle(e.CellBounds.Left + 6, e.CellBounds.Top, e.CellBounds.Width - 6, e.CellBounds.Height);
-
-                TextRenderer.DrawText(
-                    e.Graphics,
-                    headerText,
-                    headerFont,
-                    textBounds,
-                    e.CellStyle.ForeColor,
-                    flags
-                );
-                e.Handled = true;
-            }
-        };
-
-        _dataGridView.RowPostPaint += (sender, e) => {
-            var grid = sender as DataGridView;
-            if (grid == null) return;
-
-            long address = (long)e.RowIndex * BytesPerRow;
-            string addressText = address.ToString("X6");
-
-            TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.Right;
-
-            Rectangle headerBounds = new Rectangle(
-                e.RowBounds.Left, 
-                e.RowBounds.Top, 
-                grid.RowHeadersWidth - 6, 
-                e.RowBounds.Height
-            );
-
-            Font font = grid.RowHeadersDefaultCellStyle.Font ?? monoBoldFont;
-            Color foreColor = grid.RowHeadersDefaultCellStyle.ForeColor;
-
-            TextRenderer.DrawText(
-                e.Graphics, 
-                addressText, 
-                font, 
-                headerBounds, 
-                foreColor, 
-                flags
-            );
-        };
-
-        _dataGridView.SelectionChanged += (sender, e) => UpdateSelectedCellNote();
-        _dataGridView.CurrentCellChanged += (sender, e) => UpdateSelectedCellNote();
-
-        _dataGridView.KeyDown += (sender, e) => {
-            if (e.Control && e.KeyCode == Keys.J) {
-                OpenJumpToAddressDialog();
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            } else if (HandleIncrementDecrementKey(e.KeyData)) {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            } else if (HandleAddressLabelKey(e.KeyData)) {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            } else if (HandleColorKey(e.KeyData)) {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            }
-        };
-
-        _dataGridView.PreviewKeyDown += (sender, e) => {
-            if (e.Control && e.KeyCode == Keys.J) {
-                e.IsInputKey = true;
-            } else if (!e.Control && !e.Alt && (e.KeyCode == Keys.Add || e.KeyCode == Keys.Oemplus || e.KeyCode == Keys.Subtract || e.KeyCode == Keys.OemMinus)) {
-                e.IsInputKey = true;
-            } else if (!e.Control && !e.Alt && e.KeyCode == Keys.L && GetSelectedFullRowIndex() != null) {
-                e.IsInputKey = true;
-            } else if (!e.Control && !e.Alt && e.KeyCode == Keys.C) {
-                e.IsInputKey = true;
-            }
-        };
-
-        KeyDown += (sender, e) => {
-            if (_noteTextBox != null && _noteTextBox.Focused) {
-                if (e.Control && e.KeyCode == Keys.S) {
-                    SaveCurrentNote();
-                    e.Handled = true;
-                    e.SuppressKeyPress = true;
-                }
-                return;
-            }
-            if (e.Control && e.KeyCode == Keys.J) {
-                OpenJumpToAddressDialog();
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            } else if (HandleIncrementDecrementKey(e.KeyData)) {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            } else if (HandleAddressLabelKey(e.KeyData)) {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            } else if (HandleColorKey(e.KeyData)) {
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            }
-        };
-
-        ContextMenuStrip contextMenu = new ContextMenuStrip {
-            BackColor = Color.FromArgb(45, 45, 48),
-            ForeColor = Color.FromArgb(220, 220, 220),
-            ShowImageMargin = false
-        };
-        ToolStripMenuItem jumpMenuItem = new ToolStripMenuItem("Jump to Address...", null, (sender, e) => OpenJumpToAddressDialog()) {
-            ShortcutKeys = Keys.Control | Keys.J,
-            ShowShortcutKeys = true,
-            BackColor = Color.FromArgb(45, 45, 48),
-            ForeColor = Color.FromArgb(220, 220, 220)
-        };
-        ToolStripMenuItem labelMenuItem = new ToolStripMenuItem("Address Label...", null, (sender, e) => {
-            int? fullRow = GetSelectedFullRowIndex();
-            if (fullRow.HasValue) {
-                OpenAddressLabelDialog(fullRow.Value);
-            } else if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.RowIndex >= 0) {
-                OpenAddressLabelDialog(_dataGridView.CurrentCell.RowIndex);
-            }
-        }) {
-            ShortcutKeyDisplayString = "L",
-            BackColor = Color.FromArgb(45, 45, 48),
-            ForeColor = Color.FromArgb(220, 220, 220)
-        };
-        ToolStripMenuItem colorMenuItem = new ToolStripMenuItem("Select Color...", null, (sender, e) => OpenColorDialogForSelectedCells()) {
-            ShortcutKeyDisplayString = "C",
-            BackColor = Color.FromArgb(45, 45, 48),
-            ForeColor = Color.FromArgb(220, 220, 220)
-        };
-        contextMenu.Items.Add(jumpMenuItem);
-        contextMenu.Items.Add(labelMenuItem);
-        contextMenu.Items.Add(colorMenuItem);
-        _dataGridView.ContextMenuStrip = contextMenu;
-        ContextMenuStrip = contextMenu;
-
-        _dataGridView.DataSource = _table;
-
-        // Side Panel Setup (Text Area & Save Button on the right)
-        _rightPanel = new Panel {
+        // ---- side panel
+        var rightPanel = new Panel {
             Dock = DockStyle.Right,
             Width = 240,
-            BackColor = Color.FromArgb(37, 37, 38),
+            BackColor = Theme.Panel,
             Padding = new Padding(10, 8, 10, 10)
         };
 
         _selectedAddressLabel = new Label {
-            Text = "Note for Address: $000000",
-            Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+            Text = "Note (No Selection):",
+            Font = Theme.UiBold,
             ForeColor = Color.FromArgb(156, 220, 254),
             Dock = DockStyle.Top,
             Height = 26,
             TextAlign = ContentAlignment.MiddleLeft
         };
 
-        Panel bottomPanel = new Panel {
+        var bottomPanel = new Panel {
             Dock = DockStyle.Bottom,
             Height = 58,
             BackColor = Color.Transparent,
             Padding = new Padding(0, 6, 0, 0)
         };
 
-        _saveNoteButton = new Button {
+        var saveButton = new Button {
             Text = "Save Note",
-            Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-            BackColor = Color.FromArgb(14, 99, 156),
+            Font = Theme.UiBold,
+            BackColor = Theme.Accent,
             ForeColor = Color.White,
             FlatStyle = FlatStyle.Flat,
             Dock = DockStyle.Top,
@@ -375,244 +113,372 @@ public class HexViewer : Form, IExternalToolForm {
             Cursor = Cursors.Hand,
             UseVisualStyleBackColor = false
         };
-        _saveNoteButton.FlatAppearance.BorderSize = 0;
-        _saveNoteButton.Click += (sender, e) => SaveCurrentNote();
+        saveButton.FlatAppearance.BorderSize = 0;
+        saveButton.Click += (_, _) => SaveCurrentNote();
 
         _statusLabel = new Label {
-            Text = "",
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
+            Font = Theme.UiSmall,
             ForeColor = Color.FromArgb(100, 200, 115),
             Dock = DockStyle.Bottom,
             Height = 20,
             TextAlign = ContentAlignment.MiddleLeft
         };
 
-        bottomPanel.Controls.Add(_saveNoteButton);
+        bottomPanel.Controls.Add(saveButton);
         bottomPanel.Controls.Add(_statusLabel);
 
         _noteTextBox = new TextBox {
             Multiline = true,
             ScrollBars = ScrollBars.Vertical,
             Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
-            BackColor = Color.FromArgb(30, 30, 30),
-            ForeColor = Color.FromArgb(220, 220, 220),
+            Font = Theme.UiInput,
+            BackColor = Theme.Back,
+            ForeColor = Theme.Fore,
             BorderStyle = BorderStyle.FixedSingle
         };
 
-        _noteTextBox.KeyDown += (sender, e) => {
-            if (e.Control && e.KeyCode == Keys.S) {
-                SaveCurrentNote();
-                e.Handled = true;
-                e.SuppressKeyPress = true;
-            }
-        };
-
-        _rightPanel.Controls.Add(_noteTextBox);
-        _rightPanel.Controls.Add(_selectedAddressLabel);
-        _rightPanel.Controls.Add(bottomPanel);
+        rightPanel.Controls.Add(_noteTextBox);
+        rightPanel.Controls.Add(_selectedAddressLabel);
+        rightPanel.Controls.Add(bottomPanel);
 
         Controls.Add(_dataGridView);
-        Controls.Add(_rightPanel);
+        Controls.Add(rightPanel);
 
-        LoadNotesFromDisk();
-        LoadLabelsFromDisk();
-        LoadColorsFromDisk();
+        BuildContextMenu();
 
         ResumeLayout(performLayout: false);
         PerformLayout();
 
         Load += (_, _) => {
             IsLoaded = true;
-            UpdateSelectedCellNote();
+            UpdateSelectedCellNote(force: true);
         };
         Activated += (_, _) => IsActive = true;
         Deactivate += (_, _) => IsActive = false;
         FormClosed += (_, _) => IsLoaded = false;
-
         Shown += (_, _) => {
-            ApiContainer?.SaveState.LoadSlot(1);
+            ActiveControl = _dataGridView;
             RefreshFormControls();
-            UpdateSelectedCellNote();
+            UpdateSelectedCellNote(force: true);
+        };    
+    }
+
+    private DataGridView BuildGrid() {
+        var grid = new DataGridView {
+            Dock = DockStyle.Fill,
+            VirtualMode = true,
+            ReadOnly = true,
+            AllowUserToAddRows = false,
+            AllowUserToDeleteRows = false,
+            AllowUserToResizeColumns = false,
+            AllowUserToResizeRows = false,
+            AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.None,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None,
+            SelectionMode = DataGridViewSelectionMode.RowHeaderSelect,
+            BackgroundColor = Theme.Back,
+            BorderStyle = BorderStyle.None,
+            CellBorderStyle = DataGridViewCellBorderStyle.Single,
+            GridColor = Color.FromArgb(50, 50, 50),
+            EnableHeadersVisualStyles = false,
+            RowHeadersWidth = 70,
+            RowHeadersWidthSizeMode = DataGridViewRowHeadersWidthSizeMode.DisableResizing,
+            ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing,
+            ColumnHeadersHeight = 26,
+            RowHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
+            ColumnHeadersBorderStyle = DataGridViewHeaderBorderStyle.Single,
+            Font = Theme.Mono,
+            DefaultCellStyle = MakeCellStyle(Theme.Back),
+            AlternatingRowsDefaultCellStyle = MakeCellStyle(Color.FromArgb(37, 37, 38)),
+            ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle {
+                Font = Theme.MonoBold,
+                Alignment = DataGridViewContentAlignment.MiddleCenter,
+                BackColor = Color.FromArgb(45, 45, 48),
+                ForeColor = Color.FromArgb(200, 200, 200),
+                SelectionBackColor = Color.FromArgb(45, 45, 48),
+                SelectionForeColor = Color.FromArgb(200, 200, 200)
+            },
+            RowHeadersDefaultCellStyle = new DataGridViewCellStyle {
+                Font = Theme.MonoBold,
+                BackColor = Color.FromArgb(45, 45, 48),
+                ForeColor = Color.FromArgb(140, 170, 200),
+                SelectionBackColor = Color.FromArgb(45, 45, 48),
+                SelectionForeColor = Color.FromArgb(140, 170, 200)
+            }
         };
+
+        // Explicit row height (before RowCount is set) so nothing depends on font/DPI guesses.
+        grid.RowTemplate.Height = RowHeight;
+
+        typeof(DataGridView)
+            .GetProperty("DoubleBuffered", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?.SetValue(grid, true, null);
+
+        // ---- columns: 16 hex columns + Label
+        for (int i = 0; i < BytesPerRow; i++) {
+            grid.Columns.Add(new DataGridViewTextBoxColumn {
+                Name = i.ToString("X"),
+                HeaderText = i.ToString("X"),
+                Width = 30,
+                MinimumWidth = 30,
+                Resizable = DataGridViewTriState.False,
+                SortMode = DataGridViewColumnSortMode.NotSortable
+            });
+        }
+
+        var labelStyle = new DataGridViewCellStyle {
+            Font = Theme.Ui,
+            Alignment = DataGridViewContentAlignment.MiddleLeft,
+            Padding = new Padding(6, 0, 6, 0)
+        };
+        grid.Columns.Add(new DataGridViewTextBoxColumn {
+            Name = "Label",
+            HeaderText = "Label",
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
+            MinimumWidth = 120,
+            SortMode = DataGridViewColumnSortMode.NotSortable,
+            DefaultCellStyle = labelStyle,
+            HeaderCell = { Style = { Alignment = DataGridViewContentAlignment.MiddleLeft, Padding = new Padding(6, 0, 0, 0) } }
+        });
+
+        _totalBytes = DefaultMemorySize;
+        grid.RowCount = (int)(_totalBytes / BytesPerRow);
+
+        // ---- events
+        grid.CellValueNeeded += OnCellValueNeeded;
+        grid.CellFormatting += OnCellFormatting;
+        grid.RowPostPaint += OnRowPostPaint;
+        grid.SelectionChanged += (_, _) => UpdateSelectedCellNote();
+        grid.CurrentCellChanged += (_, _) => UpdateSelectedCellNote();
+
+        return grid;
     }
 
-    private int CalculateFirstViewedRowIndex() {
-        var verticalOffset = _dataGridView.VerticalScrollingOffset;
-        var verticalOffsetSnapped = verticalOffset;
-        if (verticalOffset % 25 > 0) {
-            verticalOffsetSnapped = (verticalOffset / 25) * 25;
+    private static DataGridViewCellStyle MakeCellStyle(Color back) => new() {
+        Font = Theme.Mono,
+        Alignment = DataGridViewContentAlignment.MiddleCenter,
+        BackColor = back,
+        ForeColor = Theme.Fore,
+        SelectionBackColor = Color.FromArgb(38, 79, 120),
+        SelectionForeColor = Color.White,
+        Padding = new Padding(2, 0, 2, 0)
+    };
+
+    private void BuildContextMenu() {
+        var menu = new ContextMenuStrip {
+            BackColor = Color.FromArgb(45, 45, 48),
+            ForeColor = Theme.Fore,
+            ShowImageMargin = false
+        };
+
+        menu.Items.Add(new ToolStripMenuItem("Jump to Address...", null, (_, _) => OpenJumpToAddressDialog()) {
+            ShortcutKeyDisplayString = "Ctrl+J"
+        });
+        menu.Items.Add(new ToolStripMenuItem("Address Label...", null, (_, _) => OpenAddressLabelForCurrentRow()) {
+            ShortcutKeyDisplayString = "L"
+        });
+        menu.Items.Add(new ToolStripMenuItem("Select Color...", null, (_, _) => OpenColorDialogForSelectedCells()) {
+            ShortcutKeyDisplayString = "C"
+        });
+
+        foreach (ToolStripItem item in menu.Items) {
+            item.BackColor = Color.FromArgb(45, 45, 48);
+            item.ForeColor = Theme.Fore;
         }
-        
-        return (verticalOffsetSnapped / 25 );
+
+        _dataGridView.ContextMenuStrip = menu;
+        ContextMenuStrip = menu;
     }
 
+    // ---------------------------------------------------------------- virtual mode
 
-    private void EnsureRows(int totalBytes) {
-        int requiredRows = (totalBytes + BytesPerRow - 1) / BytesPerRow;
-        if (_table.Rows.Count == requiredRows) return;
+    private void OnCellValueNeeded(object? sender, DataGridViewCellValueEventArgs e) {
+        if (e.RowIndex < 0) return;
 
-        _table.BeginLoadData();
-        while (_table.Rows.Count < requiredRows) {
-            int r = _table.Rows.Count;
-            long addr = (long)r * BytesPerRow;
-            string lbl = _labels.TryGetValue(addr, out string? val) ? (val ?? "") : "";
-            _table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", lbl);
+        long rowAddress = (long)e.RowIndex * BytesPerRow;
+        if (e.ColumnIndex < BytesPerRow) {
+            byte? value = ReadCached(rowAddress + e.ColumnIndex);
+            e.Value = value.HasValue ? HexStrings[value.Value] : "--";
+        } else {
+            e.Value = _labels.TryGetValue(rowAddress, out string? label) ? label : "";
         }
-        while (_table.Rows.Count > requiredRows) {
-            _table.Rows.RemoveAt(_table.Rows.Count - 1);
-        }
-        _table.EndLoadData();
     }
+
+    private void OnCellFormatting(object? sender, DataGridViewCellFormattingEventArgs e) {
+        if (e.RowIndex < 0 || e.ColumnIndex < 0 || e.ColumnIndex >= BytesPerRow) return;
+
+        long address = (long)e.RowIndex * BytesPerRow + e.ColumnIndex;
+        if (_colors.TryGetValue(address, out string? colorName)
+            && TryGetColorStyle(colorName, out Color back, out Color fore)) {
+            e.CellStyle!.BackColor = back;
+            e.CellStyle.ForeColor = fore;
+        } else if (_modifiedAddresses.Contains(address)) {
+            e.CellStyle!.BackColor = Color.FromArgb(80, 70, 20);
+            e.CellStyle.ForeColor = Color.FromArgb(255, 235, 140);
+        }
+    }
+
+    private void OnRowPostPaint(object? sender, DataGridViewRowPostPaintEventArgs e) {
+        string text = ((long)e.RowIndex * BytesPerRow).ToString("X6");
+        var bounds = new Rectangle(
+            e.RowBounds.Left, e.RowBounds.Top,
+            _dataGridView.RowHeadersWidth - 6, e.RowBounds.Height);
+
+        TextRenderer.DrawText(
+            e.Graphics, text, Theme.MonoBold, bounds,
+            Color.FromArgb(140, 170, 200),
+            TextFormatFlags.VerticalCenter | TextFormatFlags.Right);
+    }
+
+    /// <summary>Returns one byte from the page cache, reading the page from the emulator on a miss.</summary>
+    private byte? ReadCached(long address) {
+        if (address < 0 || address >= _totalBytes) return null;
+
+        const int pageBytes = PageRows * BytesPerRow;
+        int page = (int)(address / pageBytes);
+
+        if (!_pages.TryGetValue(page, out byte[]? data)) {
+            data = ReadPage(page);
+            _pages[page] = data;
+        }
+
+        int index = (int)(address - (long)page * pageBytes);
+        return index < data.Length ? data[index] : null;
+    }
+
+    private byte[] ReadPage(int page) {
+        const int pageBytes = PageRows * BytesPerRow;
+        long start = (long)page * pageBytes;
+        int length = (int)Math.Min(pageBytes, _totalBytes - start);
+
+        if (ApiContainer == null || length <= 0) return Array.Empty<byte>();
+
+        var list = ApiContainer.Memory.ReadByteRange(start, length);
+        if (list == null) return Array.Empty<byte>();
+
+        int count = Math.Min(list.Count, length);
+        var data = new byte[count];
+        for (int i = 0; i < count; i++) data[i] = list[i];
+        return data;
+    }
+
+    // ---------------------------------------------------------------- refresh
 
     private void RefreshFormControls() {
-        if (ApiContainer == null) {
-            return;
+        if (ApiContainer == null) return;
+
+        UpdateContext(ApiContainer);
+        _pages.Clear();
+        _dataGridView.Invalidate();
+    }
+
+    /// <summary>Detects ROM / memory-domain / size changes and reloads per-context data.</summary>
+    private void UpdateContext(ApiContainer api) {
+        string domain = "";
+        string rom = "";
+        try { domain = api.Memory.GetCurrentMemoryDomain() ?? ""; } catch { }
+        try { rom = api.Emulation.GetGameInfo()?.Name ?? ""; } catch { }
+
+        long size = api.Memory.GetCurrentMemoryDomainSize();
+        if (size <= 0) size = DefaultMemorySize;
+
+        string key = $"{rom}|{domain}";
+        if (key != _contextKey) {
+            _contextKey = key;
+            _dataPrefix = Path.Combine(GetDataDirectory(), $"{Sanitize(rom)}__{Sanitize(domain)}");
+            api.Memory.SetBigEndian(false);
+
+            _modifiedAddresses.Clear();
+            LoadAllData();
+            UpdateSelectedCellNote(force: true);
         }
 
-        ApiContainer.Memory.SetBigEndian(false);
-
-        int totalBytes = (int)ApiContainer.Memory.GetCurrentMemoryDomainSize();
-        if (totalBytes <= 0) {
-            totalBytes = 0x20000;
-        }
-
-        EnsureRows(totalBytes);
-
-        if (_table.Rows.Count == 0) {
-            return;
-        }
-
-
-        int firstRow = CalculateFirstViewedRowIndex();
-        if (firstRow < 0) {
-            firstRow = 0;
-        }
-
-        int visibleRowCount = _dataGridView.DisplayedRowCount(includePartialRow: true);
-        if (visibleRowCount <= 0) {
-            visibleRowCount = 50;
-        }
-
-        firstRow = Math.Min(firstRow, _table.Rows.Count - 1);
-        int lastRow = Math.Min(_table.Rows.Count - 1, firstRow + visibleRowCount - 1);
-        int rowsToRead = lastRow - firstRow + 1;
-
-        int cols = BytesPerRow;
-        long startAddress = (long)firstRow * cols;
-        int bytesToRead = rowsToRead * cols;
-
-        if (startAddress >= totalBytes) {
-            return;
-        }
-
-        if (startAddress + bytesToRead > totalBytes) {
-            bytesToRead = (int)(totalBytes - startAddress);
-        }
-
-        if (bytesToRead <= 0) {
-            return;
-        }
-
-        var bytes = ApiContainer.Memory.ReadByteRange(startAddress, bytesToRead);
-        if (bytes == null) {
-            return;
-        }
-
-        int count = bytes.Count;
-        _table.BeginLoadData();
-        for (int r = 0; r < rowsToRead; r++) {
-            int currentRow = firstRow + r;
-            DataRow dataRow = _table.Rows[currentRow];
-            int rowByteOffset = r * cols;
-
-            for (int col = 0; col < cols; col++) {
-                int byteIndex = rowByteOffset + col;
-                if (byteIndex < count) {
-                    string hexValue = HexStrings[bytes[byteIndex]];
-                    if (!ReferenceEquals(dataRow[col], hexValue) && !Equals(dataRow[col], hexValue)) {
-                        dataRow[col] = hexValue;
-                    }
-                }
+        if (size != _totalBytes) {
+            _totalBytes = size;
+            _pages.Clear();
+            int rows = (int)((size + BytesPerRow - 1) / BytesPerRow);
+            if (_dataGridView.RowCount != rows) {
+                _dataGridView.RowCount = rows;
             }
         }
-        _table.EndLoadData();
     }
-    
-    protected override bool ProcessCmdKey(ref Message msg, Keys keyData) {
-        if (_noteTextBox != null && _noteTextBox.Focused) {
+
+    // ---------------------------------------------------------------- keyboard
+
+    // Single place for all shortcuts. ProcessCmdKey runs before the focused control sees the key,
+    // so each shortcut fires exactly once.
+    private bool TryHandleShortcut(Keys keyData) {
+        if (_noteTextBox.ContainsFocus) {
             if (keyData == (Keys.Control | Keys.S)) {
                 SaveCurrentNote();
                 return true;
             }
-            return base.ProcessCmdKey(ref msg, keyData);
+            return false;
         }
+
         if (keyData == (Keys.Control | Keys.J)) {
             OpenJumpToAddressDialog();
             return true;
         }
-        if (HandleIncrementDecrementKey(keyData)) {
-            return true;
+
+        if ((keyData & (Keys.Control | Keys.Alt)) == 0) {
+            switch (keyData & Keys.KeyCode) {
+                case Keys.Add:
+                case Keys.Oemplus:
+                    ModifySelectedCells(1);
+                    return true;
+                case Keys.Subtract:
+                case Keys.OemMinus:
+                    ModifySelectedCells(-1);
+                    return true;
+                case Keys.L:
+                    OpenAddressLabelForCurrentRow();
+                    return true;
+                case Keys.C:
+                    OpenColorDialogForSelectedCells();
+                    return true;
+            }
         }
-        if (HandleAddressLabelKey(keyData)) {
-            return true;
-        }
-        if (HandleColorKey(keyData)) {
-            return true;
-        }
-        return base.ProcessCmdKey(ref msg, keyData);
+
+        return false;
     }
 
-    protected override bool ProcessDialogKey(Keys keyData) {
-        if (_noteTextBox != null && _noteTextBox.Focused) {
-            if (keyData == (Keys.Control | Keys.S)) {
-                SaveCurrentNote();
-                return true;
-            }
-            return base.ProcessDialogKey(keyData);
-        }
-        if (keyData == (Keys.Control | Keys.J)) {
-            OpenJumpToAddressDialog();
-            return true;
-        }
-        if (HandleIncrementDecrementKey(keyData)) {
-            return true;
-        }
-        if (HandleAddressLabelKey(keyData)) {
-            return true;
-        }
-        if (HandleColorKey(keyData)) {
-            return true;
-        }
-        return base.ProcessDialogKey(keyData);
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData) =>
+        TryHandleShortcut(keyData) || base.ProcessCmdKey(ref msg, keyData);
+    // ---------------------------------------------------------------- selection helpers
+
+    private long GetCurrentSelectedAddress() {
+        var cell = _dataGridView.CurrentCell;
+        if (cell == null || cell.RowIndex < 0 || cell.ColumnIndex < 0) return -1;
+
+        // Clicking the Label column maps to the first byte of that row.
+        int col = cell.ColumnIndex < BytesPerRow ? cell.ColumnIndex : 0;
+        return (long)cell.RowIndex * BytesPerRow + col;
     }
 
-    protected override bool ProcessKeyPreview(ref Message m) {
-        if (_noteTextBox != null && _noteTextBox.Focused) {
-            return base.ProcessKeyPreview(ref m);
-        }
-        const int WM_KEYDOWN = 0x0100;
-        if (m.Msg == WM_KEYDOWN) {
-            Keys key = (Keys)(int)m.WParam | ModifierKeys;
-            if (key == (Keys.Control | Keys.J)) {
-                OpenJumpToAddressDialog();
-                return true;
-            }
-            if (HandleIncrementDecrementKey(key)) {
-                return true;
-            }
-            if (HandleAddressLabelKey(key)) {
-                return true;
-            }
-            if (HandleColorKey(key)) {
-                return true;
+    private List<long> GetSelectedCellAddresses() {
+        var addresses = new List<long>();
+
+        foreach (DataGridViewCell cell in _dataGridView.SelectedCells) {
+            if (cell.RowIndex >= 0 && cell.ColumnIndex >= 0 && cell.ColumnIndex < BytesPerRow) {
+                addresses.Add((long)cell.RowIndex * BytesPerRow + cell.ColumnIndex);
             }
         }
-        return base.ProcessKeyPreview(ref m);
+
+        if (addresses.Count == 0) {
+            var cur = _dataGridView.CurrentCell;
+            if (cur != null && cur.RowIndex >= 0 && cur.ColumnIndex >= 0 && cur.ColumnIndex < BytesPerRow) {
+                addresses.Add((long)cur.RowIndex * BytesPerRow + cur.ColumnIndex);
+            }
+        }
+
+        return addresses.Distinct().OrderBy(a => a).ToList();
     }
 
-    private void UpdateSelectedCellNote() {
+    // ---------------------------------------------------------------- notes panel
+
+    private void UpdateSelectedCellNote(bool force = false) {
         long address = GetCurrentSelectedAddress();
+
         if (address < 0) {
             _selectedAddressLabel.Text = "Note (No Selection):";
             _noteTextBox.Text = "";
@@ -621,181 +487,12 @@ public class HexViewer : Form, IExternalToolForm {
             return;
         }
 
-        if (address == _currentSelectedAddress) {
-            return;
-        }
+        if (!force && address == _currentSelectedAddress) return;
 
         _currentSelectedAddress = address;
         _selectedAddressLabel.Text = $"Note for Address: ${address:X6}";
-        if (_notes.TryGetValue(address, out string? note)) {
-            _noteTextBox.Text = note ?? "";
-        } else {
-            _noteTextBox.Text = "";
-        }
+        _noteTextBox.Text = _notes.TryGetValue(address, out string? note) ? note : "";
         _statusLabel.Text = "";
-    }
-
-    private long GetCurrentSelectedAddress() {
-        if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.RowIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex >= 0) {
-            int col = Math.Min(_dataGridView.CurrentCell.ColumnIndex, BytesPerRow - 1);
-            return (long)_dataGridView.CurrentCell.RowIndex * BytesPerRow + col;
-        }
-        if (_dataGridView.SelectedCells.Count > 0) {
-            var cell = _dataGridView.SelectedCells[0];
-            if (cell.RowIndex >= 0 && cell.ColumnIndex >= 0) {
-                int col = Math.Min(cell.ColumnIndex, BytesPerRow - 1);
-                return (long)cell.RowIndex * BytesPerRow + col;
-            }
-        }
-        return 0;
-    }
-
-    private int? GetSelectedFullRowIndex() {
-        if (_dataGridView.SelectedRows.Count > 0) {
-            return _dataGridView.SelectedRows[0].Index;
-        }
-        if (_dataGridView.SelectedCells.Count >= BytesPerRow) {
-            int firstRow = _dataGridView.SelectedCells[0].RowIndex;
-            for (int i = 1; i < _dataGridView.SelectedCells.Count; i++) {
-                if (_dataGridView.SelectedCells[i].RowIndex != firstRow) {
-                    return null;
-                }
-            }
-            return firstRow;
-        }
-        return null;
-    }
-
-    private bool HandleAddressLabelKey(Keys keyData) {
-        if (_isJumpDialogOpen || _isLabelDialogOpen || _isColorDialogOpen) return false;
-        if (_noteTextBox != null && _noteTextBox.Focused) return false;
-
-        bool isCtrl = (keyData & Keys.Control) != 0;
-        bool isAlt = (keyData & Keys.Alt) != 0;
-        if (isCtrl || isAlt) return false;
-
-        Keys keyCode = keyData & Keys.KeyCode;
-        if (keyCode == Keys.L) {
-            int? fullRow = GetSelectedFullRowIndex();
-            if (fullRow.HasValue) {
-                OpenAddressLabelDialog(fullRow.Value);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private bool HandleColorKey(Keys keyData) {
-        if (_isJumpDialogOpen || _isLabelDialogOpen || _isColorDialogOpen) return false;
-        if (_noteTextBox != null && _noteTextBox.Focused) return false;
-
-        bool isCtrl = (keyData & Keys.Control) != 0;
-        bool isAlt = (keyData & Keys.Alt) != 0;
-        if (isCtrl || isAlt) return false;
-
-        Keys keyCode = keyData & Keys.KeyCode;
-        if (keyCode == Keys.C) {
-            OpenColorDialogForSelectedCells();
-            return true;
-        }
-        return false;
-    }
-
-    private List<long> GetSelectedCellAddresses() {
-        var addresses = new List<long>();
-        if (_dataGridView.SelectedCells.Count > 0) {
-            foreach (DataGridViewCell cell in _dataGridView.SelectedCells) {
-                if (cell.RowIndex >= 0 && cell.ColumnIndex >= 0 && cell.ColumnIndex < BytesPerRow && cell.RowIndex < _table.Rows.Count) {
-                    addresses.Add((long)cell.RowIndex * BytesPerRow + cell.ColumnIndex);
-                }
-            }
-        } else if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.RowIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex < BytesPerRow && _dataGridView.CurrentCell.RowIndex < _table.Rows.Count) {
-            addresses.Add((long)_dataGridView.CurrentCell.RowIndex * BytesPerRow + _dataGridView.CurrentCell.ColumnIndex);
-        }
-        return addresses.Distinct().OrderBy(a => a).ToList();
-    }
-
-    public void OpenColorDialogForSelectedCells() {
-        if (_isColorDialogOpen) return;
-        var selectedAddresses = GetSelectedCellAddresses();
-        if (selectedAddresses.Count == 0) return;
-
-        _isColorDialogOpen = true;
-        try {
-            string initialColor = "";
-            if (_colors.TryGetValue(selectedAddresses[0], out string? existingColor) && !string.IsNullOrEmpty(existingColor)) {
-                initialColor = existingColor;
-            }
-
-            using var dialog = new SelectColorDialog(selectedAddresses.Count, initialColor);
-            if (dialog.ShowDialog(this) == DialogResult.OK) {
-                string chosenColor = dialog.SelectedColor;
-                if (string.IsNullOrWhiteSpace(chosenColor) || chosenColor.Equals("None", StringComparison.OrdinalIgnoreCase)) {
-                    foreach (long addr in selectedAddresses) {
-                        _colors.Remove(addr);
-                    }
-                } else {
-                    foreach (long addr in selectedAddresses) {
-                        _colors[addr] = chosenColor;
-                    }
-                }
-                SaveColorsToDisk();
-                _dataGridView.Invalidate();
-            }
-        } finally {
-            _isColorDialogOpen = false;
-        }
-    }
-
-    public static bool TryGetColorStyle(string colorName, out Color backColor, out Color foreColor) {
-        foreColor = Color.White;
-        switch (colorName.Trim().ToLowerInvariant()) {
-            case "blue":
-                backColor = Color.FromArgb(30, 90, 180);
-                return true;
-            case "red":
-                backColor = Color.FromArgb(160, 35, 35);
-                return true;
-            case "green":
-                backColor = Color.FromArgb(35, 125, 50);
-                return true;
-            case "orange":
-                backColor = Color.FromArgb(190, 95, 20);
-                return true;
-            case "purple":
-                backColor = Color.FromArgb(120, 45, 150);
-                return true;
-            default:
-                backColor = Color.Empty;
-                return false;
-        }
-    }
-
-    public void OpenAddressLabelDialog(int rowIndex) {
-        if (_isLabelDialogOpen || rowIndex < 0 || rowIndex >= _table.Rows.Count) return;
-        _isLabelDialogOpen = true;
-        try {
-            long address = (long)rowIndex * BytesPerRow;
-            _labels.TryGetValue(address, out string? currentLabel);
-
-            using var dialog = new AddressLabelDialog(address, currentLabel ?? "");
-            if (dialog.ShowDialog(this) == DialogResult.OK) {
-                string newLabel = dialog.AddressLabel;
-                if (string.IsNullOrWhiteSpace(newLabel)) {
-                    _labels.Remove(address);
-                    _table.Rows[rowIndex]["Label"] = "";
-                } else {
-                    _labels[address] = newLabel;
-                    _table.Rows[rowIndex]["Label"] = newLabel;
-                }
-                SaveLabelsToDisk();
-                if (rowIndex < _dataGridView.RowCount) {
-                    _dataGridView.InvalidateRow(rowIndex);
-                }
-            }
-        } finally {
-            _isLabelDialogOpen = false;
-        }
     }
 
     public void SaveCurrentNote() {
@@ -809,392 +506,212 @@ public class HexViewer : Form, IExternalToolForm {
             _notes[address] = text;
         }
 
-        SaveNotesToDisk();
-        _statusLabel.Text = $"Saved note for ${address:X6}";
-    }
-
-    private static string GetNotesFilePath() {
-        try {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            if (!string.IsNullOrEmpty(baseDir) && Directory.Exists(baseDir)) {
-                return Path.Combine(baseDir, "hex_notes.json");
-            }
-        } catch { }
-        return "hex_notes.json";
-    }
-
-    private void LoadNotesFromDisk() {
-        try {
-            string path = GetNotesFilePath();
-            if (!File.Exists(path) && File.Exists("hex_notes.json")) {
-                path = "hex_notes.json";
-            }
-            if (File.Exists(path)) {
-                string content = File.ReadAllText(path);
-                ParseNotesJson(content);
-            }
-        } catch { }
-    }
-
-    private void SaveNotesToDisk() {
-        try {
-            string path = GetNotesFilePath();
-            string json = SerializeNotesJson();
-            File.WriteAllText(path, json, Encoding.UTF8);
-        } catch (Exception ex) {
-            MessageBox.Show(this, $"Failed to save note to disk: {ex.Message}", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        if (SaveMap(_dataPrefix + ".notes.json", _notes, "note")) {
+            _statusLabel.Text = $"Saved note for ${address:X6}";
         }
     }
 
-    private string SerializeNotesJson() {
-        var sb = new StringBuilder();
-        sb.AppendLine("{");
-        var sortedKeys = _notes.Keys.OrderBy(k => k).ToList();
-        for (int i = 0; i < sortedKeys.Count; i++) {
-            long address = sortedKeys[i];
-            string note = _notes[address] ?? "";
-            string escapedNote = note
-                .Replace("\\", "\\\\")
-                .Replace("\"", "\\\"")
-                .Replace("\r", "\\r")
-                .Replace("\n", "\\n")
-                .Replace("\t", "\\t");
-            string trailing = (i == sortedKeys.Count - 1) ? "" : ",";
-            sb.AppendLine($"  \"{address:X6}\": \"{escapedNote}\"{trailing}");
-        }
-        sb.AppendLine("}");
-        return sb.ToString();
-    }
+    // ---------------------------------------------------------------- dialogs / actions
 
-    private void ParseNotesJson(string json) {
-        if (string.IsNullOrWhiteSpace(json)) return;
-        _notes.Clear();
-
-        var regex = new Regex("\"([^\"]+)\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"");
-        var matches = regex.Matches(json);
-        foreach (Match match in matches) {
-            if (match.Groups.Count >= 3) {
-                string keyStr = match.Groups[1].Value;
-                string valStr = match.Groups[2].Value;
-
-                if (TryParseAddress(keyStr, out long address)) {
-                    string unescaped = valStr
-                        .Replace("\\n", "\n")
-                        .Replace("\\r", "\r")
-                        .Replace("\\t", "\t")
-                        .Replace("\\\"", "\"")
-                        .Replace("\\\\", "\\");
-                    _notes[address] = unescaped;
-                }
-            }
+    private void OpenAddressLabelForCurrentRow() {
+        var cell = _dataGridView.CurrentCell;
+        if (cell != null && cell.RowIndex >= 0) {
+            OpenAddressLabelDialog(cell.RowIndex);
         }
     }
 
-    private static string GetLabelsFilePath() {
-        try {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            if (!string.IsNullOrEmpty(baseDir) && Directory.Exists(baseDir)) {
-                return Path.Combine(baseDir, "hex_labels.json");
-            }
-        } catch { }
-        return "hex_labels.json";
+    public void OpenAddressLabelDialog(int rowIndex) {
+        if (rowIndex < 0 || rowIndex >= _dataGridView.RowCount) return;
+
+        long address = (long)rowIndex * BytesPerRow;
+        _labels.TryGetValue(address, out string? currentLabel);
+
+        using var dialog = new AddressLabelDialog(address, currentLabel ?? "");
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
+
+        string newLabel = dialog.AddressLabel;
+        if (string.IsNullOrWhiteSpace(newLabel)) {
+            _labels.Remove(address);
+        } else {
+            _labels[address] = newLabel;
+        }
+
+        SaveMap(_dataPrefix + ".labels.json", _labels, "address label");
+        _dataGridView.InvalidateRow(rowIndex);
     }
 
-    private void LoadLabelsFromDisk() {
-        try {
-            string path = GetLabelsFilePath();
-            if (!File.Exists(path) && File.Exists("hex_labels.json")) {
-                path = "hex_labels.json";
-            }
-            if (File.Exists(path)) {
-                string content = File.ReadAllText(path);
-                ParseLabelsJson(content);
-            }
-        } catch { }
+    public void OpenColorDialogForSelectedCells() {
+        var selected = GetSelectedCellAddresses();
+        if (selected.Count == 0) return;
 
-        if (_table.Rows.Count > 0 && _labels.Count > 0) {
-            for (int r = 0; r < _table.Rows.Count; r++) {
-                long addr = (long)r * BytesPerRow;
-                if (_labels.TryGetValue(addr, out string? lbl)) {
-                    _table.Rows[r]["Label"] = lbl ?? "";
-                }
-            }
-        }
-    }
+        _colors.TryGetValue(selected[0], out string? existing);
 
-    private void SaveLabelsToDisk() {
-        try {
-            string path = GetLabelsFilePath();
-            string json = SerializeLabelsJson();
-            File.WriteAllText(path, json, Encoding.UTF8);
-        } catch (Exception ex) {
-            MessageBox.Show(this, $"Failed to save address label to disk: {ex.Message}", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-    }
+        using var dialog = new SelectColorDialog(selected.Count, existing ?? "");
+        if (dialog.ShowDialog(this) != DialogResult.OK) return;
 
-    private string SerializeLabelsJson() {
-        var sb = new StringBuilder();
-        sb.AppendLine("{");
-        var sortedKeys = _labels.Keys.OrderBy(k => k).ToList();
-        for (int i = 0; i < sortedKeys.Count; i++) {
-            long address = sortedKeys[i];
-            string label = _labels[address] ?? "";
-            string escapedLabel = label
-                .Replace("\\", "\\\\")
-                .Replace("\"", "\\\"")
-                .Replace("\r", "\\r")
-                .Replace("\n", "\\n")
-                .Replace("\t", "\\t");
-            string trailing = (i == sortedKeys.Count - 1) ? "" : ",";
-            sb.AppendLine($"  \"{address:X6}\": \"{escapedLabel}\"{trailing}");
-        }
-        sb.AppendLine("}");
-        return sb.ToString();
-    }
+        string chosen = dialog.SelectedColor;
+        bool clear = string.IsNullOrWhiteSpace(chosen) || chosen.Equals("None", StringComparison.OrdinalIgnoreCase);
 
-    private void ParseLabelsJson(string json) {
-        if (string.IsNullOrWhiteSpace(json)) return;
-        _labels.Clear();
-
-        var regex = new Regex("\"([^\"]+)\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"");
-        var matches = regex.Matches(json);
-        foreach (Match match in matches) {
-            if (match.Groups.Count >= 3) {
-                string keyStr = match.Groups[1].Value;
-                string valStr = match.Groups[2].Value;
-
-                if (TryParseAddress(keyStr, out long address)) {
-                    string unescaped = valStr
-                        .Replace("\\n", "\n")
-                        .Replace("\\r", "\r")
-                        .Replace("\\t", "\t")
-                        .Replace("\\\"", "\"")
-                        .Replace("\\\\", "\\");
-                    _labels[address] = unescaped;
-                }
-            }
-        }
-    }
-
-    private static string GetColorsFilePath() {
-        try {
-            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
-            if (!string.IsNullOrEmpty(baseDir) && Directory.Exists(baseDir)) {
-                return Path.Combine(baseDir, "hex_colors.json");
-            }
-        } catch { }
-        return "hex_colors.json";
-    }
-
-    private void LoadColorsFromDisk() {
-        try {
-            string path = GetColorsFilePath();
-            if (!File.Exists(path) && File.Exists("hex_colors.json")) {
-                path = "hex_colors.json";
-            }
-            if (File.Exists(path)) {
-                string content = File.ReadAllText(path);
-                ParseColorsJson(content);
-            }
-        } catch { }
-    }
-
-    private void SaveColorsToDisk() {
-        try {
-            string path = GetColorsFilePath();
-            string json = SerializeColorsJson();
-            File.WriteAllText(path, json, Encoding.UTF8);
-        } catch (Exception ex) {
-            MessageBox.Show(this, $"Failed to save cell colors to disk: {ex.Message}", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-        }
-    }
-
-    private string SerializeColorsJson() {
-        var sb = new StringBuilder();
-        sb.AppendLine("{");
-        var sortedKeys = _colors.Keys.OrderBy(k => k).ToList();
-        for (int i = 0; i < sortedKeys.Count; i++) {
-            long address = sortedKeys[i];
-            string color = _colors[address] ?? "";
-            string escapedColor = color
-                .Replace("\\", "\\\\")
-                .Replace("\"", "\\\"")
-                .Replace("\r", "\\r")
-                .Replace("\n", "\\n")
-                .Replace("\t", "\\t");
-            string trailing = (i == sortedKeys.Count - 1) ? "" : ",";
-            sb.AppendLine($"  \"{address:X6}\": \"{escapedColor}\"{trailing}");
-        }
-        sb.AppendLine("}");
-        return sb.ToString();
-    }
-
-    private void ParseColorsJson(string json) {
-        if (string.IsNullOrWhiteSpace(json)) return;
-        _colors.Clear();
-
-        var regex = new Regex("\"([^\"]+)\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"");
-        var matches = regex.Matches(json);
-        foreach (Match match in matches) {
-            if (match.Groups.Count >= 3) {
-                string keyStr = match.Groups[1].Value;
-                string valStr = match.Groups[2].Value;
-
-                if (TryParseAddress(keyStr, out long address)) {
-                    string unescaped = valStr
-                        .Replace("\\n", "\n")
-                        .Replace("\\r", "\r")
-                        .Replace("\\t", "\t")
-                        .Replace("\\\"", "\"")
-                        .Replace("\\\\", "\\");
-                    _colors[address] = unescaped;
-                }
-            }
-        }
-    }
-
-    private bool HandleIncrementDecrementKey(Keys keyData) {
-        if (_isJumpDialogOpen || _isLabelDialogOpen || _isColorDialogOpen) return false;
-        if (_noteTextBox != null && _noteTextBox.Focused) return false;
-
-        bool isCtrl = (keyData & Keys.Control) != 0;
-        bool isAlt = (keyData & Keys.Alt) != 0;
-        if (isCtrl || isAlt) return false;
-
-        Keys keyCode = keyData & Keys.KeyCode;
-
-        if (keyCode == Keys.Add || keyCode == Keys.Oemplus) {
-            ModifySelectedCells(1);
-            return true;
-        }
-        if (keyCode == Keys.Subtract || keyCode == Keys.OemMinus) {
-            ModifySelectedCells(-1);
-            return true;
-        }
-        return false;
-    }
-
-    private void ModifySelectedCells(int delta) {
-        var cellsToModify = new List<(int row, int col)>();
-
-        if (_dataGridView.SelectedCells.Count > 0) {
-            foreach (DataGridViewCell cell in _dataGridView.SelectedCells) {
-                if (cell.RowIndex >= 0 && cell.ColumnIndex >= 0 && cell.ColumnIndex < BytesPerRow && cell.RowIndex < _table.Rows.Count) {
-                    cellsToModify.Add((cell.RowIndex, cell.ColumnIndex));
-                }
-            }
-        } else if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.RowIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex < BytesPerRow && _dataGridView.CurrentCell.RowIndex < _table.Rows.Count) {
-            cellsToModify.Add((_dataGridView.CurrentCell.RowIndex, _dataGridView.CurrentCell.ColumnIndex));
+        foreach (long addr in selected) {
+            if (clear) _colors.Remove(addr);
+            else _colors[addr] = chosen;
         }
 
-        if (cellsToModify.Count == 0) return;
-
-        cellsToModify = cellsToModify
-            .Distinct()
-            .OrderBy(c => c.row)
-            .ThenBy(c => c.col)
-            .ToList();
-
-        long totalBytes = GetTotalMemorySize();
-        bool hasChanges = false;
-
-        _table.BeginLoadData();
-        foreach (var (row, col) in cellsToModify) {
-            long address = (long)row * BytesPerRow + col;
-            if (address < 0 || address >= totalBytes) continue;
-
-            byte currentVal = 0;
-            if (ApiContainer != null) {
-                currentVal = (byte)ApiContainer.Memory.ReadByte(address);
-            } else {
-                string str = _table.Rows[row][col]?.ToString() ?? "00";
-                byte.TryParse(str, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out currentVal);
-            }
-
-            byte newVal = (byte)((currentVal + delta) & 0xFF);
-
-            if (ApiContainer != null) {
-                ApiContainer.Memory.WriteByte(address, newVal);
-            }
-
-            _modifiedAddresses.Add(address);
-            _table.Rows[row][col] = HexStrings[newVal];
-            hasChanges = true;
-        }
-        _table.EndLoadData();
-
-        if (hasChanges) {
-            _dataGridView.Invalidate();
-        }
+        SaveMap(_dataPrefix + ".colors.json", _colors, "cell color");
+        _dataGridView.Invalidate();
     }
 
     public void OpenJumpToAddressDialog() {
-        if (_isJumpDialogOpen || _isLabelDialogOpen) return;
-        _isJumpDialogOpen = true;
-        try {
-            long currentAddress = 0;
-            if (_dataGridView.CurrentCell != null) {
-                int col = Math.Min(_dataGridView.CurrentCell.ColumnIndex, BytesPerRow - 1);
-                currentAddress = (long)_dataGridView.CurrentCell.RowIndex * BytesPerRow + col;
-            } else if (CalculateFirstViewedRowIndex() >= 0) {
-                currentAddress = (long)CalculateFirstViewedRowIndex() * BytesPerRow;
-            }
+        long current = Math.Max(0, GetCurrentSelectedAddress());
 
-            long totalBytes = GetTotalMemorySize();
-
-            using var dialog = new JumpToAddressDialog(currentAddress, totalBytes);
-            if (dialog.ShowDialog(this) == DialogResult.OK) {
-                JumpToAddress(dialog.TargetAddress);
-            }
-        } finally {
-            _isJumpDialogOpen = false;
+        using var dialog = new JumpToAddressDialog(current, _totalBytes);
+        if (dialog.ShowDialog(this) == DialogResult.OK) {
+            JumpToAddress(dialog.TargetAddress);
         }
     }
 
     public void JumpToAddress(long address) {
-        int totalBytes = (int)GetTotalMemorySize();
-        EnsureRows(totalBytes);
+        if (_dataGridView.RowCount == 0) return;
 
-        if (_table.Rows.Count == 0) return;
+        int row = Math.Max(0, Math.Min((int)(address / BytesPerRow), _dataGridView.RowCount - 1));
+        int col = Math.Max(0, Math.Min((int)(address % BytesPerRow), BytesPerRow - 1));
+        
+        _dataGridView.ClearSelection();
+        _dataGridView.CurrentCell = _dataGridView.Rows[row].Cells[col];
+        _dataGridView.CurrentCell.Selected = true;
 
-        int targetRow = (int)(address / BytesPerRow);
-        int targetCol = (int)(address % BytesPerRow);
+        // Setting (not reading) the scroll row is fine; put the target a few rows from the top.
+        try {
+            _dataGridView.FirstDisplayedScrollingRowIndex = Math.Max(0, row - 3);
+        } catch (InvalidOperationException) { }
 
-        if (targetRow < 0) targetRow = 0;
-        if (targetRow >= _dataGridView.RowCount) targetRow = _dataGridView.RowCount - 1;
-        if (targetCol < 0) targetCol = 0;
-        if (targetCol >= BytesPerRow) targetCol = BytesPerRow - 1;
-
+        _dataGridView.Focus();
         RefreshFormControls();
+    }
 
-        if (targetRow < _dataGridView.RowCount && targetCol < _dataGridView.ColumnCount) {
-            _dataGridView.ClearSelection();
-            _dataGridView.CurrentCell = _dataGridView.Rows[targetRow].Cells[targetCol];
-            _dataGridView.Rows[targetRow].Cells[targetCol].Selected = true;
-            _dataGridView.Focus();
+    // ---------------------------------------------------------------- memory editing
+
+    private void ModifySelectedCells(int delta) {
+        if (ApiContainer == null) return;
+
+        var addresses = GetSelectedCellAddresses();
+        if (addresses.Count == 0) return;
+
+        foreach (long address in addresses) {
+            if (address < 0 || address >= _totalBytes) continue;
+
+            byte current = (byte)ApiContainer.Memory.ReadByte(address);
+            byte updated = (byte)((current + delta) & 0xFF);
+            ApiContainer.Memory.WriteByte(address, updated);
+            _modifiedAddresses.Add(address);
+        }
+
+        _pages.Clear();
+        _dataGridView.Invalidate();
+    }
+
+    // ---------------------------------------------------------------- colors
+
+    public static bool TryGetColorStyle(string colorName, out Color backColor, out Color foreColor) {
+        foreColor = Color.White;
+        switch (colorName.Trim().ToLowerInvariant()) {
+            case "blue":   backColor = Color.FromArgb(30, 90, 180);  return true;
+            case "red":    backColor = Color.FromArgb(160, 35, 35);  return true;
+            case "green":  backColor = Color.FromArgb(35, 125, 50);  return true;
+            case "orange": backColor = Color.FromArgb(190, 95, 20);  return true;
+            case "purple": backColor = Color.FromArgb(120, 45, 150); return true;
+            default:       backColor = Color.Empty;                  return false;
         }
     }
 
-    private long GetTotalMemorySize() {
-        if (ApiContainer != null) {
-            long size = ApiContainer.Memory.GetCurrentMemoryDomainSize();
-            if (size > 0) {
-                return size;
+    // ---------------------------------------------------------------- persistence
+
+    // Data lives in %AppData%\FMAI\HexViewer and is scoped per ROM + memory domain, so notes for one
+    // game (or WRAM vs. ROM) never bleed into another.
+    private static string GetDataDirectory() {
+        string dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FMAI", "HexViewer");
+        try { Directory.CreateDirectory(dir); } catch { }
+        return dir;
+    }
+
+    private static string Sanitize(string name) {
+        if (string.IsNullOrWhiteSpace(name)) return "unknown";
+        foreach (char c in Path.GetInvalidFileNameChars()) name = name.Replace(c, '_');
+        return name.Trim();
+    }
+
+    private void LoadAllData() {
+        Replace(_notes, LoadMap(_dataPrefix + ".notes.json"));
+        Replace(_labels, LoadMap(_dataPrefix + ".labels.json"));
+        Replace(_colors, LoadMap(_dataPrefix + ".colors.json"));
+        _dataGridView.Invalidate();
+    }
+
+    private static void Replace(Dictionary<long, string> target, Dictionary<long, string> source) {
+        target.Clear();
+        foreach (var kv in source) target[kv.Key] = kv.Value;
+    }
+
+    private static readonly Regex JsonPair =
+        new("\"([^\"]+)\"\\s*:\\s*\"((?:\\\\.|[^\"\\\\])*)\"", RegexOptions.Singleline);
+    private static readonly Regex JsonEscape = new(@"\\(.)", RegexOptions.Singleline);
+
+    private static string Escape(string s) => s
+        .Replace("\\", "\\\\")
+        .Replace("\"", "\\\"")
+        .Replace("\r", "\\r")
+        .Replace("\n", "\\n")
+        .Replace("\t", "\\t");
+
+    // Single-pass unescape: sequential Replace() calls corrupt sequences like "\\n".
+    private static string Unescape(string s) => JsonEscape.Replace(s, m => m.Groups[1].Value switch {
+        "n" => "\n",
+        "r" => "\r",
+        "t" => "\t",
+        var c => c
+    });
+
+    private static Dictionary<long, string> LoadMap(string path) {
+        var map = new Dictionary<long, string>();
+        try {
+            if (!File.Exists(path)) return map;
+
+            foreach (Match m in JsonPair.Matches(File.ReadAllText(path))) {
+                if (TryParseAddress(m.Groups[1].Value, out long address)) {
+                    map[address] = Unescape(m.Groups[2].Value);
+                }
             }
+        } catch { }
+        return map;
+    }
+
+    private bool SaveMap(string path, Dictionary<long, string> map, string what) {
+        try {
+            var sb = new StringBuilder();
+            sb.AppendLine("{");
+            var keys = map.Keys.OrderBy(k => k).ToList();
+            for (int i = 0; i < keys.Count; i++) {
+                string comma = i == keys.Count - 1 ? "" : ",";
+                sb.AppendLine($"  \"{keys[i]:X6}\": \"{Escape(map[keys[i]])}\"{comma}");
+            }
+            sb.AppendLine("}");
+
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+            return true;
+        } catch (Exception ex) {
+            MessageBox.Show(this, $"Failed to save {what} to disk: {ex.Message}", "Save Error",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
         }
-        if (_table.Rows.Count > 0) {
-            return (long)_table.Rows.Count * BytesPerRow;
-        }
-        return 0x20000;
     }
 
     public static bool TryParseAddress(string? input, out long address) {
         address = 0;
-        if (string.IsNullOrWhiteSpace(input)) {
-            return false;
-        }
+        if (string.IsNullOrWhiteSpace(input)) return false;
 
-        string text = input!.Trim();
+        string text = input.Trim();
 
         if (text.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) {
             text = text.Substring(2).Trim();
@@ -1207,185 +724,144 @@ public class HexViewer : Form, IExternalToolForm {
         }
 
         text = text.Replace(":", "").Replace(" ", "");
-
-        if (string.IsNullOrEmpty(text)) {
-            return false;
-        }
+        if (text.Length == 0) return false;
 
         return long.TryParse(text, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out address) && address >= 0;
     }
 
-    private sealed class JumpToAddressDialog : Form {
+    // ---------------------------------------------------------------- theme (shared, never disposed)
+
+    private static class Theme {
+        public static readonly Color Back = Color.FromArgb(30, 30, 30);
+        public static readonly Color Panel = Color.FromArgb(37, 37, 38);
+        public static readonly Color Fore = Color.FromArgb(220, 220, 220);
+        public static readonly Color Accent = Color.FromArgb(14, 99, 156);
+        public static readonly Color Neutral = Color.FromArgb(60, 60, 60);
+
+        public static readonly Font Mono = new("Consolas", 9.5f, FontStyle.Regular);
+        public static readonly Font MonoBold = new("Consolas", 9.5f, FontStyle.Bold);
+        public static readonly Font Ui = new("Segoe UI", 9f, FontStyle.Regular);
+        public static readonly Font UiBold = new("Segoe UI", 9f, FontStyle.Bold);
+        public static readonly Font UiSmall = new("Segoe UI", 8.5f, FontStyle.Regular);
+        public static readonly Font UiInput = new("Segoe UI", 9.5f, FontStyle.Regular);
+    }
+
+    // ---------------------------------------------------------------- dialogs
+
+    private abstract class DarkDialog : Form {
+        protected DarkDialog(string title, Size clientSize) {
+            Text = title;
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = clientSize;
+            Font = Theme.Ui;
+            BackColor = Theme.Panel;
+            ForeColor = Theme.Fore;
+        }
+
+        protected Label AddLabel(string text, bool bold) {
+            var label = new Label {
+                Text = text,
+                Location = new Point(14, 12),
+                AutoSize = true,
+                Font = bold ? Theme.UiBold : Theme.Ui,
+                ForeColor = Theme.Fore
+            };
+            Controls.Add(label);
+            return label;
+        }
+
+        protected Button AddButton(string text, Point location, bool primary, DialogResult result) {
+            var button = new Button {
+                Text = text,
+                DialogResult = result,
+                Location = location,
+                Size = new Size(75, 26),
+                BackColor = primary ? Theme.Accent : Theme.Neutral,
+                ForeColor = primary ? Color.White : Theme.Fore,
+                FlatStyle = FlatStyle.Flat,
+                UseVisualStyleBackColor = false
+            };
+            button.FlatAppearance.BorderSize = 0;
+            Controls.Add(button);
+            return button;
+        }
+
+        protected TextBox AddTextBox(Point location, Size size, Font font, string text) {
+            var box = new TextBox {
+                Location = location,
+                Size = size,
+                Font = font,
+                BackColor = Theme.Back,
+                ForeColor = Theme.Fore,
+                BorderStyle = BorderStyle.FixedSingle,
+                Text = text
+            };
+            Controls.Add(box);
+            return box;
+        }
+    }
+
+    private sealed class JumpToAddressDialog : DarkDialog {
         private readonly TextBox _addressTextBox;
         private readonly long _maxAddress;
 
         public long TargetAddress { get; private set; }
 
-        public JumpToAddressDialog(long currentAddress, long maxAddress) {
+        public JumpToAddressDialog(long currentAddress, long maxAddress) : base("Jump to Address", new Size(280, 115)) {
             _maxAddress = maxAddress;
 
-            Text = "Jump to Address";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            ShowInTaskbar = false;
-            StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(280, 115);
-            Font = new Font("Segoe UI", 9f, FontStyle.Regular);
-            BackColor = Color.FromArgb(37, 37, 38);
-            ForeColor = Color.FromArgb(220, 220, 220);
+            AddLabel("Enter Address (Hex):", bold: false);
+            _addressTextBox = AddTextBox(new Point(16, 34), new Size(248, 23), Theme.Mono, currentAddress.ToString("X"));
 
-            Label label = new Label {
-                Text = "Enter Address (Hex):",
-                Location = new Point(14, 12),
-                AutoSize = true,
-                ForeColor = Color.FromArgb(220, 220, 220)
-            };
+            var ok = AddButton("Jump", new Point(108, 72), primary: true, DialogResult.None);
+            var cancel = AddButton("Cancel", new Point(189, 72), primary: false, DialogResult.Cancel);
 
-            _addressTextBox = new TextBox {
-                Location = new Point(16, 34),
-                Size = new Size(248, 23),
-                Font = new Font("Consolas", 10f, FontStyle.Regular),
-                BackColor = Color.FromArgb(30, 30, 30),
-                ForeColor = Color.FromArgb(220, 220, 220),
-                BorderStyle = BorderStyle.FixedSingle,
-                Text = currentAddress >= 0 ? currentAddress.ToString("X") : "0"
-            };
+            ok.Click += (_, _) => OnJump();
+            AcceptButton = ok;
+            CancelButton = cancel;
 
-            Button okButton = new Button {
-                Text = "Jump",
-                Location = new Point(108, 72),
-                Size = new Size(75, 26),
-                BackColor = Color.FromArgb(14, 99, 156),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            okButton.FlatAppearance.BorderSize = 0;
-
-            Button cancelButton = new Button {
-                Text = "Cancel",
-                DialogResult = DialogResult.Cancel,
-                Location = new Point(189, 72),
-                Size = new Size(75, 26),
-                BackColor = Color.FromArgb(60, 60, 60),
-                ForeColor = Color.FromArgb(220, 220, 220),
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            cancelButton.FlatAppearance.BorderSize = 0;
-
-            okButton.Click += (sender, e) => {
-                if (TryParseAddress(_addressTextBox.Text, out long parsedAddress)) {
-                    if (parsedAddress < 0 || (_maxAddress > 0 && parsedAddress >= _maxAddress)) {
-                        string maxStr = _maxAddress > 0 ? (_maxAddress - 1).ToString("X6") : "FFFFFF";
-                        MessageBox.Show(
-                            this,
-                            $"Address is out of range.\nValid range: $000000 - ${maxStr}",
-                            "Invalid Address",
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Warning
-                        );
-                        _addressTextBox.Focus();
-                        _addressTextBox.SelectAll();
-                        return;
-                    }
-                    TargetAddress = parsedAddress;
-                    DialogResult = DialogResult.OK;
-                    Close();
-                } else {
-                    MessageBox.Show(
-                        this,
-                        "Please enter a valid hexadecimal address (e.g. 7E0000, $1234, 0x100).",
-                        "Invalid Address",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning
-                    );
-                    _addressTextBox.Focus();
-                    _addressTextBox.SelectAll();
-                }
-            };
-
-            AcceptButton = okButton;
-            CancelButton = cancelButton;
-
-            Controls.Add(label);
-            Controls.Add(_addressTextBox);
-            Controls.Add(okButton);
-            Controls.Add(cancelButton);
-
-            Shown += (sender, e) => {
+            Shown += (_, _) => {
                 _addressTextBox.Focus();
                 _addressTextBox.SelectAll();
             };
         }
+
+        private void OnJump() {
+            if (!TryParseAddress(_addressTextBox.Text, out long parsed)) {
+                Warn("Please enter a valid hexadecimal address (e.g. 7E0000, $1234, 0x100).");
+                return;
+            }
+
+            if (_maxAddress > 0 && parsed >= _maxAddress) {
+                Warn($"Address is out of range.\nValid range: $000000 - ${_maxAddress - 1:X6}");
+                return;
+            }
+
+            TargetAddress = parsed;
+            DialogResult = DialogResult.OK;
+        }
+
+        private void Warn(string message) {
+            MessageBox.Show(this, message, "Invalid Address", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _addressTextBox.Focus();
+            _addressTextBox.SelectAll();
+        }
     }
 
-    private sealed class AddressLabelDialog : Form {
+    private sealed class AddressLabelDialog : DarkDialog {
         private readonly TextBox _labelTextBox;
         public string AddressLabel => _labelTextBox.Text.Trim();
 
-        public AddressLabelDialog(long address, string currentLabel) {
-            Text = "Address Label";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            ShowInTaskbar = false;
-            StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(320, 120);
-            Font = new Font("Segoe UI", 9f, FontStyle.Regular);
-            BackColor = Color.FromArgb(37, 37, 38);
-            ForeColor = Color.FromArgb(220, 220, 220);
+        public AddressLabelDialog(long address, string currentLabel) : base("Address Label", new Size(320, 120)) {
+            AddLabel($"Enter Address Label for ${address:X6}:", bold: true);
+            _labelTextBox = AddTextBox(new Point(16, 36), new Size(288, 23), Theme.UiInput, currentLabel);
 
-            Label label = new Label {
-                Text = $"Enter Address Label for ${address:X6}:",
-                Location = new Point(14, 12),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(220, 220, 220)
-            };
-
-            _labelTextBox = new TextBox {
-                Location = new Point(16, 36),
-                Size = new Size(288, 23),
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
-                BackColor = Color.FromArgb(30, 30, 30),
-                ForeColor = Color.FromArgb(220, 220, 220),
-                BorderStyle = BorderStyle.FixedSingle,
-                Text = currentLabel ?? ""
-            };
-
-            Button okButton = new Button {
-                Text = "Save",
-                DialogResult = DialogResult.OK,
-                Location = new Point(148, 76),
-                Size = new Size(75, 26),
-                BackColor = Color.FromArgb(14, 99, 156),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            okButton.FlatAppearance.BorderSize = 0;
-
-            Button cancelButton = new Button {
-                Text = "Cancel",
-                DialogResult = DialogResult.Cancel,
-                Location = new Point(229, 76),
-                Size = new Size(75, 26),
-                BackColor = Color.FromArgb(60, 60, 60),
-                ForeColor = Color.FromArgb(220, 220, 220),
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            cancelButton.FlatAppearance.BorderSize = 0;
-
-            AcceptButton = okButton;
-            CancelButton = cancelButton;
-
-            Controls.Add(label);
-            Controls.Add(_labelTextBox);
-            Controls.Add(okButton);
-            Controls.Add(cancelButton);
+            AcceptButton = AddButton("Save", new Point(148, 76), primary: true, DialogResult.OK);
+            CancelButton = AddButton("Cancel", new Point(229, 76), primary: false, DialogResult.Cancel);
 
             Shown += (_, _) => {
                 _labelTextBox.Focus();
@@ -1394,90 +870,35 @@ public class HexViewer : Form, IExternalToolForm {
         }
     }
 
-    private sealed class SelectColorDialog : Form {
+    private sealed class SelectColorDialog : DarkDialog {
         private readonly ComboBox _colorComboBox;
-        public string SelectedColor => _colorComboBox.SelectedItem?.ToString() ?? "Blue";
+        public string SelectedColor => _colorComboBox.SelectedItem?.ToString() ?? "None";
 
-        public SelectColorDialog(int cellCount, string initialColor) {
-            Text = "Select Cell Color";
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            MaximizeBox = false;
-            MinimizeBox = false;
-            ShowInTaskbar = false;
-            StartPosition = FormStartPosition.CenterParent;
-            ClientSize = new Size(300, 120);
-            Font = new Font("Segoe UI", 9f, FontStyle.Regular);
-            BackColor = Color.FromArgb(37, 37, 38);
-            ForeColor = Color.FromArgb(220, 220, 220);
-
-            string targetText = cellCount > 1 ? $"{cellCount} cells" : "selected cell";
-            Label label = new Label {
-                Text = $"Select Color for {targetText}:",
-                Location = new Point(14, 12),
-                AutoSize = true,
-                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
-                ForeColor = Color.FromArgb(220, 220, 220)
-            };
+        public SelectColorDialog(int cellCount, string initialColor) : base("Select Cell Color", new Size(300, 120)) {
+            string target = cellCount > 1 ? $"{cellCount} cells" : "selected cell";
+            AddLabel($"Select Color for {target}:", bold: true);
 
             _colorComboBox = new ComboBox {
                 Location = new Point(16, 36),
                 Size = new Size(268, 24),
                 DropDownStyle = ComboBoxStyle.DropDownList,
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
-                BackColor = Color.FromArgb(30, 30, 30),
-                ForeColor = Color.FromArgb(220, 220, 220),
+                Font = Theme.UiInput,
+                BackColor = Theme.Back,
+                ForeColor = Theme.Fore,
                 FlatStyle = FlatStyle.Flat
             };
 
-            string[] colorOptions = ["Blue", "Red", "Green", "Orange", "Purple"];
-            _colorComboBox.Items.AddRange(colorOptions);
+            string[] options = ["None", "Blue", "Red", "Green", "Orange", "Purple"];
+            _colorComboBox.Items.AddRange(options);
 
-            int selectedIndex = 0;
-            if (!string.IsNullOrWhiteSpace(initialColor)) {
-                for (int i = 0; i < colorOptions.Length; i++) {
-                    if (string.Equals(colorOptions[i], initialColor, StringComparison.OrdinalIgnoreCase)) {
-                        selectedIndex = i;
-                        break;
-                    }
-                }
-            }
-            _colorComboBox.SelectedIndex = selectedIndex;
-
-            Button okButton = new Button {
-                Text = "Apply",
-                DialogResult = DialogResult.OK,
-                Location = new Point(128, 76),
-                Size = new Size(75, 26),
-                BackColor = Color.FromArgb(14, 99, 156),
-                ForeColor = Color.White,
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            okButton.FlatAppearance.BorderSize = 0;
-
-            Button cancelButton = new Button {
-                Text = "Cancel",
-                DialogResult = DialogResult.Cancel,
-                Location = new Point(209, 76),
-                Size = new Size(75, 26),
-                BackColor = Color.FromArgb(60, 60, 60),
-                ForeColor = Color.FromArgb(220, 220, 220),
-                FlatStyle = FlatStyle.Flat,
-                UseVisualStyleBackColor = false
-            };
-            cancelButton.FlatAppearance.BorderSize = 0;
-
-            AcceptButton = okButton;
-            CancelButton = cancelButton;
-
-            Controls.Add(label);
+            int index = Array.FindIndex(options, o => string.Equals(o, initialColor, StringComparison.OrdinalIgnoreCase));
+            _colorComboBox.SelectedIndex = index >= 0 ? index : 1; // default to Blue when nothing is set
             Controls.Add(_colorComboBox);
-            Controls.Add(okButton);
-            Controls.Add(cancelButton);
 
-            Shown += (_, _) => {
-                _colorComboBox.Focus();
-            };
+            AcceptButton = AddButton("Apply", new Point(128, 76), primary: true, DialogResult.OK);
+            CancelButton = AddButton("Cancel", new Point(209, 76), primary: false, DialogResult.Cancel);
+
+            Shown += (_, _) => _colorComboBox.Focus();
         }
     }
 }
