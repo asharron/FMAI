@@ -27,9 +27,11 @@ public class HexViewer : Form, IExternalToolForm {
     public void Restart() => RefreshFormControls();
     public bool AskSaveChanges() => true;
 
+    private const int BytesPerRow = 16;
     private static readonly string[] HexStrings = Enumerable.Range(0, 256).Select(b => b.ToString("X2")).ToArray();
     private readonly HashSet<long> _modifiedAddresses = new HashSet<long>();
     private readonly Dictionary<long, string> _notes = new Dictionary<long, string>();
+    private readonly Dictionary<long, string> _labels = new Dictionary<long, string>();
     private readonly DataTable _table;
     private readonly DataGridView _dataGridView;
     private readonly TextBox _noteTextBox;
@@ -39,11 +41,12 @@ public class HexViewer : Form, IExternalToolForm {
     private readonly Panel _rightPanel;
     private long _currentSelectedAddress = -1;
     private bool _isJumpDialogOpen;
+    private bool _isLabelDialogOpen;
 
     public HexViewer() {
         KeyPreview = true;
-        ClientSize = new Size(760, 360);
-        MinimumSize = new Size(620, 260);
+        ClientSize = new Size(920, 380);
+        MinimumSize = new Size(700, 260);
         SuspendLayout();
 
         _table = new DataTable();
@@ -64,10 +67,11 @@ public class HexViewer : Form, IExternalToolForm {
         _table.Columns.Add("D");
         _table.Columns.Add("E");
         _table.Columns.Add("F");
+        _table.Columns.Add("Label", typeof(string));
 
         _table.BeginLoadData();
         for (int i = 0; i < 8192; i++) {
-            _table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00");
+            _table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "");
         }
         _table.EndLoadData();
 
@@ -137,18 +141,31 @@ public class HexViewer : Form, IExternalToolForm {
             _dataGridView.CurrentCell = null;
 
             foreach (DataGridViewColumn col in _dataGridView.Columns) {
-                col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
                 col.SortMode = DataGridViewColumnSortMode.NotSortable;
                 col.HeaderCell.Style.Font = monoBoldFont;
                 col.HeaderCell.Style.BackColor = Color.FromArgb(238, 241, 245);
                 col.HeaderCell.Style.ForeColor = Color.FromArgb(50, 55, 65);
-                col.HeaderCell.Style.Padding = new Padding(0);
+
+                if (col.Index < BytesPerRow) {
+                    col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                    col.HeaderCell.Style.Padding = new Padding(0);
+                    col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+                } else {
+                    col.HeaderText = "Label";
+                    col.HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleLeft;
+                    col.HeaderCell.Style.Padding = new Padding(6, 0, 0, 0);
+                    col.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+                    col.DefaultCellStyle.Padding = new Padding(6, 0, 6, 0);
+                    col.DefaultCellStyle.Font = new Font("Segoe UI", 9f, FontStyle.Regular);
+                    col.AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+                    col.MinimumWidth = 120;
+                }
             }
         };
 
         _dataGridView.CellFormatting += (sender, e) => {
-            if (e.RowIndex >= 0 && e.ColumnIndex >= 0) {
-                long address = (long)e.RowIndex * _table.Columns.Count + e.ColumnIndex;
+            if (e.RowIndex >= 0 && e.ColumnIndex >= 0 && e.ColumnIndex < BytesPerRow) {
+                long address = (long)e.RowIndex * BytesPerRow + e.ColumnIndex;
                 if (_modifiedAddresses.Contains(address)) {
                     e.CellStyle.BackColor = Color.LightYellow;
                 }
@@ -170,13 +187,21 @@ public class HexViewer : Form, IExternalToolForm {
 
                 e.Paint(e.ClipBounds, (DataGridViewPaintParts.All & ~DataGridViewPaintParts.ContentForeground));
 
+                TextFormatFlags flags = e.ColumnIndex < BytesPerRow
+                    ? (TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter)
+                    : (TextFormatFlags.Left | TextFormatFlags.VerticalCenter);
+
+                Rectangle textBounds = e.ColumnIndex < BytesPerRow
+                    ? e.CellBounds
+                    : new Rectangle(e.CellBounds.Left + 6, e.CellBounds.Top, e.CellBounds.Width - 6, e.CellBounds.Height);
+
                 TextRenderer.DrawText(
                     e.Graphics,
                     headerText,
                     headerFont,
-                    e.CellBounds,
+                    textBounds,
                     e.CellStyle.ForeColor,
-                    TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter
+                    flags
                 );
                 e.Handled = true;
             }
@@ -186,7 +211,7 @@ public class HexViewer : Form, IExternalToolForm {
             var grid = sender as DataGridView;
             if (grid == null) return;
 
-            long address = (long)e.RowIndex * _table.Columns.Count;
+            long address = (long)e.RowIndex * BytesPerRow;
             string addressText = address.ToString("X6");
 
             TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.Right;
@@ -231,6 +256,9 @@ public class HexViewer : Form, IExternalToolForm {
             } else if (HandleIncrementDecrementKey(e.KeyData)) {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
+            } else if (HandleAddressLabelKey(e.KeyData)) {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
             }
         };
 
@@ -238,6 +266,8 @@ public class HexViewer : Form, IExternalToolForm {
             if (e.Control && e.KeyCode == Keys.J) {
                 e.IsInputKey = true;
             } else if (!e.Control && !e.Alt && (e.KeyCode == Keys.Add || e.KeyCode == Keys.Oemplus || e.KeyCode == Keys.Subtract || e.KeyCode == Keys.OemMinus)) {
+                e.IsInputKey = true;
+            } else if (!e.Control && !e.Alt && e.KeyCode == Keys.L && GetSelectedFullRowIndex() != null) {
                 e.IsInputKey = true;
             }
         };
@@ -258,6 +288,9 @@ public class HexViewer : Form, IExternalToolForm {
             } else if (HandleIncrementDecrementKey(e.KeyData)) {
                 e.Handled = true;
                 e.SuppressKeyPress = true;
+            } else if (HandleAddressLabelKey(e.KeyData)) {
+                e.Handled = true;
+                e.SuppressKeyPress = true;
             }
         };
 
@@ -266,7 +299,18 @@ public class HexViewer : Form, IExternalToolForm {
             ShortcutKeys = Keys.Control | Keys.J,
             ShowShortcutKeys = true
         };
+        ToolStripMenuItem labelMenuItem = new ToolStripMenuItem("Address Label...", null, (sender, e) => {
+            int? fullRow = GetSelectedFullRowIndex();
+            if (fullRow.HasValue) {
+                OpenAddressLabelDialog(fullRow.Value);
+            } else if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.RowIndex >= 0) {
+                OpenAddressLabelDialog(_dataGridView.CurrentCell.RowIndex);
+            }
+        }) {
+            ShortcutKeyDisplayString = "L"
+        };
         contextMenu.Items.Add(jumpMenuItem);
+        contextMenu.Items.Add(labelMenuItem);
         _dataGridView.ContextMenuStrip = contextMenu;
         ContextMenuStrip = contextMenu;
 
@@ -348,6 +392,7 @@ public class HexViewer : Form, IExternalToolForm {
         Controls.Add(_rightPanel);
 
         LoadNotesFromDisk();
+        LoadLabelsFromDisk();
 
         ResumeLayout(performLayout: false);
         PerformLayout();
@@ -369,14 +414,17 @@ public class HexViewer : Form, IExternalToolForm {
 
 
     private void EnsureRows(int totalBytes) {
-        int requiredRows = (totalBytes + _table.Columns.Count - 1) / _table.Columns.Count;
+        int requiredRows = (totalBytes + BytesPerRow - 1) / BytesPerRow;
         if (_table.Rows.Count == requiredRows) return;
 
         int savedFirstRow = _dataGridView.FirstDisplayedScrollingRowIndex;
 
         _table.BeginLoadData();
         while (_table.Rows.Count < requiredRows) {
-            _table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00");
+            int r = _table.Rows.Count;
+            long addr = (long)r * BytesPerRow;
+            string lbl = _labels.TryGetValue(addr, out string? val) ? (val ?? "") : "";
+            _table.Rows.Add("00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", "00", lbl);
         }
         while (_table.Rows.Count > requiredRows) {
             _table.Rows.RemoveAt(_table.Rows.Count - 1);
@@ -420,7 +468,7 @@ public class HexViewer : Form, IExternalToolForm {
         int lastRow = Math.Min(_table.Rows.Count - 1, firstRow + visibleRowCount - 1);
         int rowsToRead = lastRow - firstRow + 1;
 
-        int cols = _table.Columns.Count;
+        int cols = BytesPerRow;
         long startAddress = (long)firstRow * cols;
         int bytesToRead = rowsToRead * cols;
 
@@ -480,6 +528,9 @@ public class HexViewer : Form, IExternalToolForm {
         if (HandleIncrementDecrementKey(keyData)) {
             return true;
         }
+        if (HandleAddressLabelKey(keyData)) {
+            return true;
+        }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
@@ -498,6 +549,9 @@ public class HexViewer : Form, IExternalToolForm {
         if (HandleIncrementDecrementKey(keyData)) {
             return true;
         }
+        if (HandleAddressLabelKey(keyData)) {
+            return true;
+        }
         return base.ProcessDialogKey(keyData);
     }
 
@@ -513,6 +567,9 @@ public class HexViewer : Form, IExternalToolForm {
                 return true;
             }
             if (HandleIncrementDecrementKey(key)) {
+                return true;
+            }
+            if (HandleAddressLabelKey(key)) {
                 return true;
             }
         }
@@ -545,18 +602,82 @@ public class HexViewer : Form, IExternalToolForm {
 
     private long GetCurrentSelectedAddress() {
         if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.RowIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex >= 0) {
-            return (long)_dataGridView.CurrentCell.RowIndex * _table.Columns.Count + _dataGridView.CurrentCell.ColumnIndex;
+            int col = Math.Min(_dataGridView.CurrentCell.ColumnIndex, BytesPerRow - 1);
+            return (long)_dataGridView.CurrentCell.RowIndex * BytesPerRow + col;
         }
         if (_dataGridView.SelectedCells.Count > 0) {
             var cell = _dataGridView.SelectedCells[0];
             if (cell.RowIndex >= 0 && cell.ColumnIndex >= 0) {
-                return (long)cell.RowIndex * _table.Columns.Count + cell.ColumnIndex;
+                int col = Math.Min(cell.ColumnIndex, BytesPerRow - 1);
+                return (long)cell.RowIndex * BytesPerRow + col;
             }
         }
         if (_dataGridView.FirstDisplayedScrollingRowIndex >= 0) {
-            return (long)_dataGridView.FirstDisplayedScrollingRowIndex * _table.Columns.Count;
+            return (long)_dataGridView.FirstDisplayedScrollingRowIndex * BytesPerRow;
         }
         return 0;
+    }
+
+    private int? GetSelectedFullRowIndex() {
+        if (_dataGridView.SelectedRows.Count > 0) {
+            return _dataGridView.SelectedRows[0].Index;
+        }
+        if (_dataGridView.SelectedCells.Count >= BytesPerRow) {
+            int firstRow = _dataGridView.SelectedCells[0].RowIndex;
+            for (int i = 1; i < _dataGridView.SelectedCells.Count; i++) {
+                if (_dataGridView.SelectedCells[i].RowIndex != firstRow) {
+                    return null;
+                }
+            }
+            return firstRow;
+        }
+        return null;
+    }
+
+    private bool HandleAddressLabelKey(Keys keyData) {
+        if (_isJumpDialogOpen || _isLabelDialogOpen) return false;
+        if (_noteTextBox != null && _noteTextBox.Focused) return false;
+
+        bool isCtrl = (keyData & Keys.Control) != 0;
+        bool isAlt = (keyData & Keys.Alt) != 0;
+        if (isCtrl || isAlt) return false;
+
+        Keys keyCode = keyData & Keys.KeyCode;
+        if (keyCode == Keys.L) {
+            int? fullRow = GetSelectedFullRowIndex();
+            if (fullRow.HasValue) {
+                OpenAddressLabelDialog(fullRow.Value);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void OpenAddressLabelDialog(int rowIndex) {
+        if (_isLabelDialogOpen || rowIndex < 0 || rowIndex >= _table.Rows.Count) return;
+        _isLabelDialogOpen = true;
+        try {
+            long address = (long)rowIndex * BytesPerRow;
+            _labels.TryGetValue(address, out string? currentLabel);
+
+            using var dialog = new AddressLabelDialog(address, currentLabel ?? "");
+            if (dialog.ShowDialog(this) == DialogResult.OK) {
+                string newLabel = dialog.AddressLabel;
+                if (string.IsNullOrWhiteSpace(newLabel)) {
+                    _labels.Remove(address);
+                    _table.Rows[rowIndex]["Label"] = "";
+                } else {
+                    _labels[address] = newLabel;
+                    _table.Rows[rowIndex]["Label"] = newLabel;
+                }
+                SaveLabelsToDisk();
+                if (rowIndex < _dataGridView.RowCount) {
+                    _dataGridView.InvalidateRow(rowIndex);
+                }
+            }
+        } finally {
+            _isLabelDialogOpen = false;
+        }
     }
 
     public void SaveCurrentNote() {
@@ -651,8 +772,94 @@ public class HexViewer : Form, IExternalToolForm {
         }
     }
 
+    private static string GetLabelsFilePath() {
+        try {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            if (!string.IsNullOrEmpty(baseDir) && Directory.Exists(baseDir)) {
+                return Path.Combine(baseDir, "hex_labels.json");
+            }
+        } catch { }
+        return "hex_labels.json";
+    }
+
+    private void LoadLabelsFromDisk() {
+        try {
+            string path = GetLabelsFilePath();
+            if (!File.Exists(path) && File.Exists("hex_labels.json")) {
+                path = "hex_labels.json";
+            }
+            if (File.Exists(path)) {
+                string content = File.ReadAllText(path);
+                ParseLabelsJson(content);
+            }
+        } catch { }
+
+        if (_table.Rows.Count > 0 && _labels.Count > 0) {
+            for (int r = 0; r < _table.Rows.Count; r++) {
+                long addr = (long)r * BytesPerRow;
+                if (_labels.TryGetValue(addr, out string? lbl)) {
+                    _table.Rows[r]["Label"] = lbl ?? "";
+                }
+            }
+        }
+    }
+
+    private void SaveLabelsToDisk() {
+        try {
+            string path = GetLabelsFilePath();
+            string json = SerializeLabelsJson();
+            File.WriteAllText(path, json, Encoding.UTF8);
+        } catch (Exception ex) {
+            MessageBox.Show(this, $"Failed to save address label to disk: {ex.Message}", "Save Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    private string SerializeLabelsJson() {
+        var sb = new StringBuilder();
+        sb.AppendLine("{");
+        var sortedKeys = _labels.Keys.OrderBy(k => k).ToList();
+        for (int i = 0; i < sortedKeys.Count; i++) {
+            long address = sortedKeys[i];
+            string label = _labels[address] ?? "";
+            string escapedLabel = label
+                .Replace("\\", "\\\\")
+                .Replace("\"", "\\\"")
+                .Replace("\r", "\\r")
+                .Replace("\n", "\\n")
+                .Replace("\t", "\\t");
+            string trailing = (i == sortedKeys.Count - 1) ? "" : ",";
+            sb.AppendLine($"  \"{address:X6}\": \"{escapedLabel}\"{trailing}");
+        }
+        sb.AppendLine("}");
+        return sb.ToString();
+    }
+
+    private void ParseLabelsJson(string json) {
+        if (string.IsNullOrWhiteSpace(json)) return;
+        _labels.Clear();
+
+        var regex = new Regex("\"([^\"]+)\"\\s*:\\s*\"((?:\\\\\"|[^\"])*)\"");
+        var matches = regex.Matches(json);
+        foreach (Match match in matches) {
+            if (match.Groups.Count >= 3) {
+                string keyStr = match.Groups[1].Value;
+                string valStr = match.Groups[2].Value;
+
+                if (TryParseAddress(keyStr, out long address)) {
+                    string unescaped = valStr
+                        .Replace("\\n", "\n")
+                        .Replace("\\r", "\r")
+                        .Replace("\\t", "\t")
+                        .Replace("\\\"", "\"")
+                        .Replace("\\\\", "\\");
+                    _labels[address] = unescaped;
+                }
+            }
+        }
+    }
+
     private bool HandleIncrementDecrementKey(Keys keyData) {
-        if (_isJumpDialogOpen) return false;
+        if (_isJumpDialogOpen || _isLabelDialogOpen) return false;
 
         bool isCtrl = (keyData & Keys.Control) != 0;
         bool isAlt = (keyData & Keys.Alt) != 0;
@@ -675,17 +882,19 @@ public class HexViewer : Form, IExternalToolForm {
         var selectedCells = _dataGridView.SelectedCells;
         if (selectedCells.Count > 0) {
             foreach (DataGridViewCell cell in selectedCells) {
-                ModifyCell(cell.RowIndex, cell.ColumnIndex, delta);
+                if (cell.ColumnIndex < BytesPerRow) {
+                    ModifyCell(cell.RowIndex, cell.ColumnIndex, delta);
+                }
             }
-        } else if (_dataGridView.CurrentCell != null) {
+        } else if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.ColumnIndex < BytesPerRow) {
             ModifyCell(_dataGridView.CurrentCell.RowIndex, _dataGridView.CurrentCell.ColumnIndex, delta);
         }
     }
 
     private void ModifyCell(int row, int col, int delta) {
-        if (row < 0 || col < 0 || row >= _table.Rows.Count || col >= _table.Columns.Count) return;
+        if (row < 0 || col < 0 || col >= BytesPerRow || row >= _table.Rows.Count) return;
 
-        long address = (long)row * _table.Columns.Count + col;
+        long address = (long)row * BytesPerRow + col;
         long totalBytes = GetTotalMemorySize();
         if (address < 0 || address >= totalBytes) return;
 
@@ -711,14 +920,15 @@ public class HexViewer : Form, IExternalToolForm {
     }
 
     public void OpenJumpToAddressDialog() {
-        if (_isJumpDialogOpen) return;
+        if (_isJumpDialogOpen || _isLabelDialogOpen) return;
         _isJumpDialogOpen = true;
         try {
             long currentAddress = 0;
             if (_dataGridView.CurrentCell != null) {
-                currentAddress = (long)_dataGridView.CurrentCell.RowIndex * _table.Columns.Count + _dataGridView.CurrentCell.ColumnIndex;
+                int col = Math.Min(_dataGridView.CurrentCell.ColumnIndex, BytesPerRow - 1);
+                currentAddress = (long)_dataGridView.CurrentCell.RowIndex * BytesPerRow + col;
             } else if (_dataGridView.FirstDisplayedScrollingRowIndex >= 0) {
-                currentAddress = (long)_dataGridView.FirstDisplayedScrollingRowIndex * _table.Columns.Count;
+                currentAddress = (long)_dataGridView.FirstDisplayedScrollingRowIndex * BytesPerRow;
             }
 
             long totalBytes = GetTotalMemorySize();
@@ -736,16 +946,15 @@ public class HexViewer : Form, IExternalToolForm {
         int totalBytes = (int)GetTotalMemorySize();
         EnsureRows(totalBytes);
 
-        int cols = _table.Columns.Count;
-        if (cols <= 0 || _table.Rows.Count == 0) return;
+        if (_table.Rows.Count == 0) return;
 
-        int targetRow = (int)(address / cols);
-        int targetCol = (int)(address % cols);
+        int targetRow = (int)(address / BytesPerRow);
+        int targetCol = (int)(address % BytesPerRow);
 
         if (targetRow < 0) targetRow = 0;
         if (targetRow >= _dataGridView.RowCount) targetRow = _dataGridView.RowCount - 1;
         if (targetCol < 0) targetCol = 0;
-        if (targetCol >= _dataGridView.ColumnCount) targetCol = _dataGridView.ColumnCount - 1;
+        if (targetCol >= BytesPerRow) targetCol = BytesPerRow - 1;
 
         if (_dataGridView.RowCount > 0 && targetRow >= 0 && targetRow < _dataGridView.RowCount) {
             _dataGridView.FirstDisplayedScrollingRowIndex = targetRow;
@@ -769,7 +978,7 @@ public class HexViewer : Form, IExternalToolForm {
             }
         }
         if (_table.Rows.Count > 0) {
-            return (long)_table.Rows.Count * _table.Columns.Count;
+            return (long)_table.Rows.Count * BytesPerRow;
         }
         return 0x20000;
     }
@@ -889,6 +1098,65 @@ public class HexViewer : Form, IExternalToolForm {
             Shown += (sender, e) => {
                 _addressTextBox.Focus();
                 _addressTextBox.SelectAll();
+            };
+        }
+    }
+
+    private sealed class AddressLabelDialog : Form {
+        private readonly TextBox _labelTextBox;
+        public string AddressLabel => _labelTextBox.Text.Trim();
+
+        public AddressLabelDialog(long address, string currentLabel) {
+            Text = "Address Label";
+            FormBorderStyle = FormBorderStyle.FixedDialog;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(320, 120);
+            Font = new Font("Segoe UI", 9f, FontStyle.Regular);
+
+            Label label = new Label {
+                Text = $"Enter Address Label for ${address:X6}:",
+                Location = new Point(14, 12),
+                AutoSize = true,
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+            };
+
+            _labelTextBox = new TextBox {
+                Location = new Point(16, 36),
+                Size = new Size(288, 23),
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
+                Text = currentLabel ?? ""
+            };
+
+            Button okButton = new Button {
+                Text = "Save",
+                DialogResult = DialogResult.OK,
+                Location = new Point(148, 76),
+                Size = new Size(75, 26),
+                UseVisualStyleBackColor = true
+            };
+
+            Button cancelButton = new Button {
+                Text = "Cancel",
+                DialogResult = DialogResult.Cancel,
+                Location = new Point(229, 76),
+                Size = new Size(75, 26),
+                UseVisualStyleBackColor = true
+            };
+
+            AcceptButton = okButton;
+            CancelButton = cancelButton;
+
+            Controls.Add(label);
+            Controls.Add(_labelTextBox);
+            Controls.Add(okButton);
+            Controls.Add(cancelButton);
+
+            Shown += (_, _) => {
+                _labelTextBox.Focus();
+                _labelTextBox.SelectAll();
             };
         }
     }
