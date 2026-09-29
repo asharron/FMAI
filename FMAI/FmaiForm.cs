@@ -64,9 +64,6 @@ public class FmaiForm : Form, IExternalToolForm {
         new("Loyd", "Item #7 Category?", 0x00D5CC, 1),
         new("Loyd", "Item #8", 0x00D5CD, 1),
         new("Loyd", "Item #8 Category?", 0x00D5CE, 1),
-       
-        
-        
         
         new("Loyd", "Body Item", 0x00D5B7, 1),
         
@@ -92,8 +89,10 @@ public class FmaiForm : Form, IExternalToolForm {
         
         // Turn
         new("Loyd", "Has Turn Completed", 0x00D574, 1),
-        new("Loyd", "X Position?", 0x00D548, 1),
-        new("Loyd", "Y Position?", 0x00D54A, 1),
+        new("Loyd", "X Tile Position", 0x00D548, 1),
+        new("Loyd", "Y Tile Position", 0x00D54A, 1),
+        new("Loyd", "X Coordinate Position", 0x00D548, 1),
+        new("Loyd", "Y Coordinate Position", 0x00D54A, 1),
         new("Loyd", "Max Move",      0x00D56E, 1),
        
         // Sakata
