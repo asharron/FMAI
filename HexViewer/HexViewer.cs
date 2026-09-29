@@ -64,6 +64,7 @@ public class HexViewer : Form, IExternalToolForm {
             AllowUserToAddRows = false,
             AllowUserToDeleteRows = false,
             EnableHeadersVisualStyles = false,
+            RowHeadersWidth = 65,
             ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle {
                 Alignment = DataGridViewContentAlignment.MiddleCenter,
                 Padding = new Padding {
@@ -188,8 +189,8 @@ public class HexViewer : Form, IExternalToolForm {
             var grid = sender as DataGridView;
             if (grid == null) return;
 
-            // Convert zero-based index to 1-based display number
-            string rowNumber = (e.RowIndex + 1).ToString();
+            long address = (long)e.RowIndex * _table.Columns.Count;
+            string addressText = address.ToString("X6");
 
             // Format the text alignment inside the header
             TextFormatFlags flags = TextFormatFlags.VerticalCenter | TextFormatFlags.Right;
@@ -198,14 +199,14 @@ public class HexViewer : Form, IExternalToolForm {
             Rectangle headerBounds = new Rectangle(
                 e.RowBounds.Left, 
                 e.RowBounds.Top, 
-                grid.RowHeadersWidth, 
+                grid.RowHeadersWidth - 4, 
                 e.RowBounds.Height
             );
 
             // Draw the row header text
             TextRenderer.DrawText(
                 e.Graphics, 
-                rowNumber, 
+                addressText, 
                 grid.RowHeadersDefaultCellStyle.Font, 
                 headerBounds, 
                 grid.RowHeadersDefaultCellStyle.ForeColor, 
