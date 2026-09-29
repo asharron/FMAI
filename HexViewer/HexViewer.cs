@@ -871,6 +871,7 @@ public class HexViewer : Form, IExternalToolForm {
 
     private bool HandleIncrementDecrementKey(Keys keyData) {
         if (_isJumpDialogOpen || _isLabelDialogOpen) return false;
+        if (_noteTextBox != null && _noteTextBox.Focused) return false;
 
         bool isCtrl = (keyData & Keys.Control) != 0;
         bool isAlt = (keyData & Keys.Alt) != 0;
@@ -879,54 +880,67 @@ public class HexViewer : Form, IExternalToolForm {
         Keys keyCode = keyData & Keys.KeyCode;
 
         if (keyCode == Keys.Add || keyCode == Keys.Oemplus) {
-            ModifySelectedCell(1);
+            ModifySelectedCells(1);
             return true;
         }
         if (keyCode == Keys.Subtract || keyCode == Keys.OemMinus) {
-            ModifySelectedCell(-1);
+            ModifySelectedCells(-1);
             return true;
         }
         return false;
     }
 
-    private void ModifySelectedCell(int delta) {
-        var selectedCells = _dataGridView.SelectedCells;
-        if (selectedCells.Count > 0) {
-            foreach (DataGridViewCell cell in selectedCells) {
-                if (cell.ColumnIndex < BytesPerRow) {
-                    ModifyCell(cell.RowIndex, cell.ColumnIndex, delta);
+    private void ModifySelectedCells(int delta) {
+        var cellsToModify = new List<(int row, int col)>();
+
+        if (_dataGridView.SelectedCells.Count > 0) {
+            foreach (DataGridViewCell cell in _dataGridView.SelectedCells) {
+                if (cell.RowIndex >= 0 && cell.ColumnIndex >= 0 && cell.ColumnIndex < BytesPerRow && cell.RowIndex < _table.Rows.Count) {
+                    cellsToModify.Add((cell.RowIndex, cell.ColumnIndex));
                 }
             }
-        } else if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.ColumnIndex < BytesPerRow) {
-            ModifyCell(_dataGridView.CurrentCell.RowIndex, _dataGridView.CurrentCell.ColumnIndex, delta);
+        } else if (_dataGridView.CurrentCell != null && _dataGridView.CurrentCell.RowIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex >= 0 && _dataGridView.CurrentCell.ColumnIndex < BytesPerRow && _dataGridView.CurrentCell.RowIndex < _table.Rows.Count) {
+            cellsToModify.Add((_dataGridView.CurrentCell.RowIndex, _dataGridView.CurrentCell.ColumnIndex));
         }
-    }
 
-    private void ModifyCell(int row, int col, int delta) {
-        if (row < 0 || col < 0 || col >= BytesPerRow || row >= _table.Rows.Count) return;
+        if (cellsToModify.Count == 0) return;
 
-        long address = (long)row * BytesPerRow + col;
+        cellsToModify = cellsToModify
+            .Distinct()
+            .OrderBy(c => c.row)
+            .ThenBy(c => c.col)
+            .ToList();
+
         long totalBytes = GetTotalMemorySize();
-        if (address < 0 || address >= totalBytes) return;
+        bool hasChanges = false;
 
-        byte currentVal = 0;
-        if (ApiContainer != null) {
-            currentVal = (byte)ApiContainer.Memory.ReadByte(address);
-        } else {
-            string str = _table.Rows[row][col]?.ToString() ?? "00";
-            byte.TryParse(str, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out currentVal);
+        _table.BeginLoadData();
+        foreach (var (row, col) in cellsToModify) {
+            long address = (long)row * BytesPerRow + col;
+            if (address < 0 || address >= totalBytes) continue;
+
+            byte currentVal = 0;
+            if (ApiContainer != null) {
+                currentVal = (byte)ApiContainer.Memory.ReadByte(address);
+            } else {
+                string str = _table.Rows[row][col]?.ToString() ?? "00";
+                byte.TryParse(str, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out currentVal);
+            }
+
+            byte newVal = (byte)(currentVal + delta);
+
+            if (ApiContainer != null) {
+                ApiContainer.Memory.WriteByte(address, newVal);
+            }
+
+            _modifiedAddresses.Add(address);
+            _table.Rows[row][col] = HexStrings[newVal];
+            hasChanges = true;
         }
+        _table.EndLoadData();
 
-        byte newVal = (byte)(currentVal + delta);
-
-        if (ApiContainer != null) {
-            ApiContainer.Memory.WriteByte(address, newVal);
-        }
-
-        _modifiedAddresses.Add(address);
-        _table.Rows[row][col] = HexStrings[newVal];
-        if (row < _dataGridView.RowCount && col < _dataGridView.ColumnCount) {
-            _dataGridView.InvalidateCell(col, row);
+        if (hasChanges) {
+            _dataGridView.Invalidate();
         }
     }
 
