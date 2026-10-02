@@ -23,8 +23,15 @@
         <Reference Include="BizHawk.Common" HintPath="$(BIZHAWK_HOME)dll/BizHawk.Common.dll"/>
         <Reference Include="BizHawk.Emulation.Common" HintPath="$(BIZHAWK_HOME)dll/BizHawk.Emulation.Common.dll"/>
         <Reference Include="BizHawk.WinForms.Controls" HintPath="$(BIZHAWK_HOME)dll/BizHawk.WinForms.Controls.dll"/>
+        <None Include="$(MSBuildProjectDirectory)\.env" Condition="Exists('$(MSBuildProjectDirectory)\.env')">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
     <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-        <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BIZHAWK_DATA_HOME)ExternalTools"/>
+        <ItemGroup>
+            <OutputFiles Include="$(TargetDir)*.dll"/>
+            <OutputFiles Include="$(TargetDir).env" Condition="Exists('$(TargetDir).env')" />
+        </ItemGroup>
+        <Copy SourceFiles="@(OutputFiles)" DestinationFolder="$(BIZHAWK_DATA_HOME)ExternalTools"/>
     </Target>
 </Project>

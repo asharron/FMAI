@@ -5,6 +5,14 @@ using BizHawk.Emulation.Common;
 using BizHawk.Client.Common;
 using System.Windows.Forms;
 using System.Drawing;
+using System.IO;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Reflection;
+using System.Text;
+using System.Threading.Tasks;
+using DotNetEnv;
+using Newtonsoft.Json;
 
 namespace FMAI;
 
@@ -184,10 +192,27 @@ public class FmaiForm : Form, IExternalToolForm {
         new("Enemy 1", "Leg Health", 0x00D849, 1),
     ];
 
+    private record UrgencyQuestion(string type, string instructions);
+    private record JevQuestion(UrgencyQuestion urgency);
+    private record JevRequest(string state, string model, JevQuestion questions);
+
+    private Label jevLabel = new Label{AutoSize = true};
+
+    private string jevApiKey = "";
+
+    private static readonly HttpClient Client = new HttpClient();
+    public static readonly string JevEndpoint = "https://api.typesafe.ai/v1/systemone";
+
     private readonly List<(RamValue RamValue, Label Label)> rows =
         TrackedValues.Select(v => (v, new Label { AutoSize = true })).ToList();
 
     public FmaiForm() {
+        string toolDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+        string envPath = Path.Combine(toolDir, ".env");
+        Env.Load(envPath);
+        jevApiKey = Environment.GetEnvironmentVariable("JEV_KEY");
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jevApiKey);
+        
         ClientSize = new Size(480, 320);
         SuspendLayout();
 
@@ -213,6 +238,44 @@ public class FmaiForm : Form, IExternalToolForm {
     }
 
     private void CreateFormControls(Control rootControl) {
+        Controls.Add(jevLabel);
+        var jevPayload =
+            new JevRequest(
+                "Hi, I've been trying to connect my Stripe account for 3 days and the integration keeps failing. I'm losing sales. Please help ASAP.",
+                "jev-latest",
+                new JevQuestion(new UrgencyQuestion("noul", "Does this message express urgency?")));
+        var jsonPayload = JsonConvert.SerializeObject(jevPayload);
+        var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+
+        // content.ReadAsStringAsync().ContinueWith(task => {
+        //     jevLabel.Text = task.Result;
+        // });
+
+        try {
+            Client.PostAsync(JevEndpoint, content)
+                .ContinueWith(postTask => {
+                    if (postTask.IsFaulted) {
+                        jevLabel.Text = "Failed to make api call";
+                        return Task.FromResult("");
+                    }
+        
+                    var response = postTask.Result;
+                    jevLabel.Text = "Status: " + response.StatusCode;
+        
+                    return response.Content.ReadAsStringAsync();
+                })
+                .Unwrap()
+                .ContinueWith(readTask => {
+                    if (readTask.Result != "") {
+                        string json = readTask.Result;
+                        jevLabel.Text = json;
+                    }
+                });
+        }
+        catch (HttpRequestException e) {
+            jevLabel.Text = "Http request exception: " + e;
+        }
+        
         foreach (var group in rows.GroupBy(r => r.RamValue.Character)) {
             var box = new GroupBox {
                 Text = group.Key,
