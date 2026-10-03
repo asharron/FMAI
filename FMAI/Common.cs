@@ -6,6 +6,11 @@ public class Common {
     }
     
     public static readonly RamValue[] TrackedValues = [
+        new("Global", "Money Small",      0x00129C, 1),
+        new("Global", "Money Med",      0x00129D, 1),
+        new("Global", "Money Large",      0x00129E, 1),
+        
+        
         // Loyd
         //////////////////////////////////////////
         // Health

@@ -1,0 +1,79 @@
+{
+  "state": {
+    "units": {
+      "Loyd": {
+        "xTilePosition": 10,
+        "yTilePosition": 5,
+        "bodyHealth": 32,
+        "lArmHealth": 30,
+        "rArmHealth": 27,
+        "legHealth": 25,
+        "maxMovement": 5,
+        "moveableTo": [
+          {
+            "xTilePosition": 11,
+            "yTilePosition": 5
+          },
+          {
+            "xTilePosition": 12,
+            "yTilePosition": 5
+          },
+          {
+            "xTilePosition": 13,
+            "yTilePosition": 5
+          },
+          {
+            "xTilePosition": 14,
+            "yTilePosition": 5
+          },
+          {
+            "xTilePosition": 15,
+            "yTilePosition": 5
+          }
+        ]
+      },
+      "Sakata": {
+        "xTilePosition": 10,
+        "yTilePosition": 6,
+        "bodyHealth": 30,
+        "lArmHealth": 30,
+        "rArmHealth": 30,
+        "legHealth": 30,
+        "maxMovement": 5,
+        "moveableTo": [
+          {
+            "xTilePosition": 11,
+            "yTilePosition": 6
+          },
+          {
+            "xTilePosition": 12,
+            "yTilePosition": 6
+          },
+          {
+            "xTilePosition": 13,
+            "yTilePosition": 6
+          },
+          {
+            "xTilePosition": 14,
+            "yTilePosition": 6
+          },
+          {
+            "xTilePosition": 15,
+            "yTilePosition": 6
+          }
+        ]
+      }
+    }
+  },
+  "model": "jev-latest",
+  "questions": {
+    "unit-selection": {
+      "type": "choice",
+      "instructions": "Which unit do you want to move?",
+      "criteria": {
+        "Loyd": null,
+        "Sakata": null
+      }
+    }
+  }
+}
