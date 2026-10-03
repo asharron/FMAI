@@ -4,6 +4,10 @@ public class Common {
     public record RamValue(string Character, string Stat, long Address, int Length) {
         public string Description => $"{Character} {Stat}";
     }
+
+
+    public static  RamValue MovementBitmaskGrid = new ("Global", "Movement Bitmask Grid Full", 0x011B9A, 736);
+    public static RamValue MovementCostGrid = new ("Global", "Movement Cost Grid Full", 0x01CB9A, 736);
     
     public static readonly RamValue[] TrackedValues = [
         new("Global", "Money Small",      0x00129C, 1),
@@ -13,6 +17,11 @@ public class Common {
         // Use this to know what character is selected
         new("Global", "Selected Grid X",      0x001640, 1),
         new("Global", "Selected Grid Y",      0x001642, 1),
+        
+        
+        new("Global", "Movement Bitmask Grid Start",      0x011B9A, 1),
+        
+        new("Global", "Movement Cost Grid Start",      0x01CB9A, 1),
         
         // Loyd
         //////////////////////////////////////////

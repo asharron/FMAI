@@ -20,7 +20,7 @@ Enemy?
 011B9A
 Movement bitmask rows? 45 + 6 bytes?
 
-1CB9A
+01CB9A
 Movement cost grid? 46 + 6 bytes
 
 
