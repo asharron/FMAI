@@ -14,3 +14,13 @@ Sakata:
 
 Enemy?
 00D849
+
+
+-- Probably same size
+011B9A
+Movement bitmask rows? 45 + 6 bytes?
+
+1CB9A
+Movement cost grid? 46 + 6 bytes
+
+

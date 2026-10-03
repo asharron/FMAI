@@ -9,7 +9,10 @@ public class Common {
         new("Global", "Money Small",      0x00129C, 1),
         new("Global", "Money Med",      0x00129D, 1),
         new("Global", "Money Large",      0x00129E, 1),
-        
+       
+        // Use this to know what character is selected
+        new("Global", "Selected Grid X",      0x001640, 1),
+        new("Global", "Selected Grid Y",      0x001642, 1),
         
         // Loyd
         //////////////////////////////////////////

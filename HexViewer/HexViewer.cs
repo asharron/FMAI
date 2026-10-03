@@ -154,7 +154,7 @@ public class HexViewer : Form, IExternalToolForm {
             UpdateSelectedCellNote(force: true);
         };
         Activated += (_, _) => IsActive = true;
-        Deactivate += (_, _) => IsActive = false;
+        Deactivate += (_, _) => IsActive = true;
         FormClosed += (_, _) => IsLoaded = false;
         Shown += (_, _) => {
             ActiveControl = _dataGridView;
