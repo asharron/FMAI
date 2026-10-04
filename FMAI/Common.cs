@@ -17,8 +17,14 @@ public class Common {
         new("Global", "Money Large",      0x00129E, 1),
        
         // Use this to know what character is selected
-        new("Global", "Selected Grid X",      0x001640, 1),
-        new("Global", "Selected Grid Y",      0x001642, 1),
+        new("Global", "Selected Character X",      0x001640, 1),
+        new("Global", "Selected Character Y",      0x001642, 1),
+        
+        new("Global", "Cursor X Coordinate",      0x0002A0, 1),
+        new("Global", "Cursor Y Coordinate",      0x0002A2, 1),
+        
+        new("Global", "Selected Tile X",      0x001640, 1),
+        new("Global", "Selected Tile Y",      0x001642, 1),
         
         
         new("Global", "Movement Bitmask Grid Start",      0x011B9A, 1),

@@ -5,7 +5,9 @@ using BizHawk.Emulation.Common;
 using BizHawk.Client.Common;
 using System.Windows.Forms;
 using System.Drawing;
+using System.Reflection.Emit;
 using System.Threading.Tasks;
+using Label = System.Windows.Forms.Label;
 
 namespace FMAI;
 
@@ -19,7 +21,7 @@ public class FmaiForm : Form, IExternalToolForm {
 
     [RequiredApi] public IEmulationApi? EmulationApi { get; set; }
 
-    private readonly Label jevLabel = new Label { AutoSize = true };
+    private readonly System.Windows.Forms.Label jevLabel = new System.Windows.Forms.Label { AutoSize = true };
 
     private readonly Jev jev = new Jev();
 
@@ -27,11 +29,15 @@ public class FmaiForm : Form, IExternalToolForm {
     private readonly DataGridView movementCostGridView = new DataGridView();
     private readonly DataGridView movementXYGrid = new DataGridView();
 
-    private readonly List<(Common.RamValue RamValue, Label Label)> rows =
+    private readonly List<(Common.RamValue RamValue, System.Windows.Forms.Label Label)> rows =
         Common.TrackedValues.Select(v => (v, new Label { AutoSize = true })).ToList();
 
     private readonly TabControl tabControl = new TabControl { Dock = DockStyle.Fill };
     private int frameCount = 0;
+
+    private readonly TabPage tab3 = new TabPage("Test Movement");
+    private Common.TileGridCoordinate tileToMoveTo = new Common.TileGridCoordinate(0, 0);
+    private bool isMovingToTile = false;
 
     public FmaiForm() {
         ClientSize = new Size(480, 320);
@@ -76,13 +82,14 @@ public class FmaiForm : Form, IExternalToolForm {
 
         tabControl.TabPages.Add(tab1);
         tabControl.TabPages.Add(tab2);
+        tabControl.TabPages.Add(tab3);
         Controls.Add(tabControl);
         ResumeLayout(performLayout: false);
         PerformLayout();
 
         Load += (_, _) => IsLoaded = true;
         Activated += (_, _) => IsActive = true;
-        Deactivate += (_, _) => IsActive = true;
+        Deactivate += (_, _) => IsActive = false;
         FormClosed += (_, _) => IsLoaded = false;
 
         Shown += (_, _) => { ApiContainer?.SaveState.LoadSlot(1); };
@@ -164,9 +171,9 @@ public class FmaiForm : Form, IExternalToolForm {
         movementBitmaskGridView.ScrollBars = ScrollBars.Both;
 
         movementBitmaskGridView.ColumnCount = 16;
-        
+
         for (var i = 1; i <= 16; i++) {
-            movementBitmaskGridView.Columns[i-1].HeaderText = i.ToString();
+            movementBitmaskGridView.Columns[i - 1].HeaderText = i.ToString();
             movementBitmaskGridView.Columns[i - 1].MinimumWidth = 20;
         }
 
@@ -205,9 +212,9 @@ public class FmaiForm : Form, IExternalToolForm {
         movementCostGridView.ColumnCount = 16;
 
         movementCostGridView.Rows.Clear();
-        
+
         for (var i = 1; i <= 16; i++) {
-            movementCostGridView.Columns[i-1].HeaderText = i.ToString();
+            movementCostGridView.Columns[i - 1].HeaderText = i.ToString();
             movementBitmaskGridView.Columns[i - 1].MinimumWidth = 20;
         }
 
@@ -235,8 +242,8 @@ public class FmaiForm : Form, IExternalToolForm {
 
         movementCostGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
         movementCostGridView.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
-       
-        
+
+
         movementXYGrid.AutoSize = true;
         movementXYGrid.Dock = DockStyle.Fill;
         movementXYGrid.ScrollBars = ScrollBars.Both;
@@ -244,38 +251,56 @@ public class FmaiForm : Form, IExternalToolForm {
         movementXYGrid.ColumnCount = 16;
 
         movementXYGrid.Rows.Clear();
-        
+
         for (var i = 1; i <= 16; i++) {
-            movementXYGrid.Columns[i-1].HeaderText = i.ToString();
+            movementXYGrid.Columns[i - 1].HeaderText = i.ToString();
             movementBitmaskGridView.Columns[i - 1].MinimumWidth = 20;
         }
 
-        var col = 0;
+        var col = 1;
         for (var i = 0; i < (736 / 16); i++) {
-            var x = 0;
+            var x = 1;
+
+            var tile1 = BitmaskToTileGridCoordinate(x++, col);
+            var tile2 = BitmaskToTileGridCoordinate(x++, col);
+            var tile3 = BitmaskToTileGridCoordinate(x++, col);
+            var tile4 = BitmaskToTileGridCoordinate(x++, col);
+            var tile5 = BitmaskToTileGridCoordinate(x++, col);
+            var tile6 = BitmaskToTileGridCoordinate(x++, col);
+            var tile7 = BitmaskToTileGridCoordinate(x++, col);
+            var tile8 = BitmaskToTileGridCoordinate(x++, col);
+            var tile9 = BitmaskToTileGridCoordinate(x++, col);
+            var tile10 = BitmaskToTileGridCoordinate(x++, col);
+            var tile11 = BitmaskToTileGridCoordinate(x++, col);
+            var tile12 = BitmaskToTileGridCoordinate(x++, col);
+            var tile13 = BitmaskToTileGridCoordinate(x++, col);
+            var tile14 = BitmaskToTileGridCoordinate(x++, col);
+            var tile15 = BitmaskToTileGridCoordinate(x++, col);
+            var tile16 = BitmaskToTileGridCoordinate(x++, col);
+            
             movementXYGrid.Rows.Add(
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}",
-                $"x:{x++}, y: {col}"
+                $"x:{tile1.x}, y: {tile1.y}",
+                $"x:{tile2.x}, y: {tile2.y}",
+                $"x:{tile3.x}, y: {tile3.y}",
+                $"x:{tile4.x}, y: {tile4.y}",
+                $"x:{tile5.x}, y: {tile5.y}",
+                $"x:{tile6.x}, y: {tile6.y}",
+                $"x:{tile7.x}, y: {tile7.y}",
+                $"x:{tile8.x}, y: {tile8.y}",
+                $"x:{tile9.x}, y: {tile9.y}",
+                $"x:{tile10.x}, y: {tile10.y}",
+                $"x:{tile11.x}, y: {tile11.y}",
+                $"x:{tile12.x}, y: {tile12.y}",
+                $"x:{tile13.x}, y: {tile13.y}",
+                $"x:{tile14.x}, y: {tile14.y}",
+                $"x:{tile15.x}, y: {tile15.y}",
+                $"x:{tile16.x}, y: {tile16.y}"
             );
             movementXYGrid.Rows[i].HeaderCell.Value = (i + 1).ToString();
 
             col++;
         }
-        
+
         movementXYGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
         movementXYGrid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
 
@@ -311,7 +336,8 @@ public class FmaiForm : Form, IExternalToolForm {
             if (bitmaskBytes[i] == 1) {
                 movementBitmaskGridView.Rows[row].Cells[col].Style.BackColor = Color.FromKnownColor(KnownColor.Blue);
                 movementXYGrid.Rows[row].Cells[col].Style.BackColor = Color.FromKnownColor(KnownColor.Wheat);
-            } else if (bitmaskBytes[i] == 145) {
+            }
+            else if (bitmaskBytes[i] == 145) {
                 movementBitmaskGridView.Rows[row].Cells[col].Style.BackColor = Color.FromKnownColor(KnownColor.Green);
                 movementXYGrid.Rows[row].Cells[col].Style.BackColor = Color.FromKnownColor(KnownColor.Green);
             }
@@ -358,9 +384,91 @@ public class FmaiForm : Form, IExternalToolForm {
         };
     }
 
-    private Common.TileGridCoordinate BitmaskToTileGridCoordinate(int row, int col, int baseLength=17, int width=30) {
+    private Common.TileGridCoordinate
+        BitmaskToTileGridCoordinate(int row, int col, int baseLength = 17, int width = 30) {
         var offset = row * 16 + col - baseLength;
         return new Common.TileGridCoordinate(offset % width, offset / width);
+    }
+
+    private void RefreshTabMovementButtons() {
+        if (ApiContainer is null) {
+            return;
+        }
+
+        frameCount++;
+        if (frameCount % 30 != 0) {
+            return;
+        }
+
+        frameCount = 0;
+
+        tab3.Controls.Clear();
+
+        var container = new FlowLayoutPanel {
+            FlowDirection = FlowDirection.TopDown,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        };
+
+        var bitmaskBytes =
+            ApiContainer.Memory.ReadByteRange(Common.MovementBitmaskGrid.Address, Common.MovementBitmaskGrid.Length);
+
+        for (var i = 0; i < bitmaskBytes.Count; i++) {
+            var row = i / 16;
+            var col = i % 16;
+
+            if (bitmaskBytes[i] != 1) {
+                continue;
+            }
+
+            var xyCoordinate = BitmaskToTileGridCoordinate(row+1, col+1);
+            var button = new Button { AutoSize = true, Text = $"x: {xyCoordinate.x} y: {xyCoordinate.y}" };
+
+            button.Click += (sender, args) => TriggerMoveToTile(xyCoordinate);
+
+            container.Controls.Add(button);
+        }
+        
+        tab3.Controls.Add(container);
+    }
+
+    private void TriggerMoveToTile(Common.TileGridCoordinate xyCoordinate) {
+        tileToMoveTo = xyCoordinate;
+        isMovingToTile = true;
+    }
+
+    private void MoveToTile() {
+        if (ApiContainer == null) {
+            return;
+        }
+
+        var selectedTileXRamValue =
+            Common.TrackedValues.FirstOrDefault(value => value.Stat == "Selected Tile X");
+        var selectedTileYRamValue =
+            Common.TrackedValues.FirstOrDefault(value => value.Stat == "Selected Tile Y");
+
+        if (selectedTileYRamValue is null || selectedTileXRamValue is null) {
+            return;
+        }
+
+        var xPosition = ApiContainer.Memory.ReadByte(selectedTileXRamValue.Address);
+        var yPosition = ApiContainer.Memory.ReadByte(selectedTileYRamValue.Address);
+
+        if (xPosition < tileToMoveTo.x) {
+            ApiContainer.Joypad.Set("Right", true, 1);
+        } else if (xPosition > tileToMoveTo.x) {
+            ApiContainer.Joypad.Set("Left", true, 1);
+        }
+                
+        if (yPosition < tileToMoveTo.y) {
+            ApiContainer.Joypad.Set("Down", true, 1);
+        } else if (yPosition > tileToMoveTo.y) {
+            ApiContainer.Joypad.Set("Up", true, 1);
+        }
+
+        if (xPosition == tileToMoveTo.x && yPosition == tileToMoveTo.y) {
+            isMovingToTile = false;
+        }
     }
 
     private void RefreshFormControls() {
@@ -370,6 +478,8 @@ public class FmaiForm : Form, IExternalToolForm {
         }
 
         RefreshMovementGridViewer();
+        RefreshTabMovementButtons();
+        MoveToTile();
         ResumeLayout();
     }
 
