@@ -25,11 +25,13 @@ public class FmaiForm : Form, IExternalToolForm {
 
     private readonly DataGridView movementBitmaskGridView = new DataGridView();
     private readonly DataGridView movementCostGridView = new DataGridView();
+    private readonly DataGridView movementXYGrid = new DataGridView();
 
     private readonly List<(Common.RamValue RamValue, Label Label)> rows =
         Common.TrackedValues.Select(v => (v, new Label { AutoSize = true })).ToList();
 
     private readonly TabControl tabControl = new TabControl { Dock = DockStyle.Fill };
+    private int frameCount = 0;
 
     public FmaiForm() {
         ClientSize = new Size(480, 320);
@@ -55,16 +57,19 @@ public class FmaiForm : Form, IExternalToolForm {
             AutoScroll = true,
         };
         var gridLayout = new TableLayoutPanel {
-            Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            ColumnCount = 3,
             RowCount = 1,
         };
 
-        gridLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
-        gridLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50f));
+        gridLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33f));
+        gridLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33f));
+        gridLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33f));
 
         gridLayout.Controls.Add(movementBitmaskGridView, 0, 0);
         gridLayout.Controls.Add(movementCostGridView, 1, 0);
+        gridLayout.Controls.Add(movementXYGrid, 2, 0);
 
         scrollPanel.Controls.Add(gridLayout);
         tab2.Controls.Add(scrollPanel);
@@ -151,12 +156,19 @@ public class FmaiForm : Form, IExternalToolForm {
 
     private void CreateMovementGridViewerTable() {
         movementBitmaskGridView.SuspendLayout();
+        movementCostGridView.SuspendLayout();
+        movementXYGrid.SuspendLayout();
 
         movementBitmaskGridView.AutoSize = true;
         movementBitmaskGridView.Dock = DockStyle.Fill;
         movementBitmaskGridView.ScrollBars = ScrollBars.Both;
 
         movementBitmaskGridView.ColumnCount = 16;
+        
+        for (var i = 1; i <= 16; i++) {
+            movementBitmaskGridView.Columns[i-1].HeaderText = i.ToString();
+            movementBitmaskGridView.Columns[i - 1].MinimumWidth = 20;
+        }
 
         movementBitmaskGridView.Rows.Clear();
 
@@ -179,13 +191,12 @@ public class FmaiForm : Form, IExternalToolForm {
                 0,
                 0
             );
+            movementBitmaskGridView.Rows[i].HeaderCell.Value = (i + 1).ToString();
         }
 
         movementBitmaskGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
         movementBitmaskGridView.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
 
-
-        movementCostGridView.SuspendLayout();
 
         movementCostGridView.AutoSize = true;
         movementCostGridView.Dock = DockStyle.Fill;
@@ -194,6 +205,11 @@ public class FmaiForm : Form, IExternalToolForm {
         movementCostGridView.ColumnCount = 16;
 
         movementCostGridView.Rows.Clear();
+        
+        for (var i = 1; i <= 16; i++) {
+            movementCostGridView.Columns[i-1].HeaderText = i.ToString();
+            movementBitmaskGridView.Columns[i - 1].MinimumWidth = 20;
+        }
 
         for (var i = 0; i < (736 / 16); i++) {
             movementCostGridView.Rows.Add(
@@ -214,19 +230,71 @@ public class FmaiForm : Form, IExternalToolForm {
                 0,
                 0
             );
+            movementCostGridView.Rows[i].HeaderCell.Value = (i + 1).ToString();
         }
 
         movementCostGridView.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
         movementCostGridView.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
+       
+        
+        movementXYGrid.AutoSize = true;
+        movementXYGrid.Dock = DockStyle.Fill;
+        movementXYGrid.ScrollBars = ScrollBars.Both;
+
+        movementXYGrid.ColumnCount = 16;
+
+        movementXYGrid.Rows.Clear();
+        
+        for (var i = 1; i <= 16; i++) {
+            movementXYGrid.Columns[i-1].HeaderText = i.ToString();
+            movementBitmaskGridView.Columns[i - 1].MinimumWidth = 20;
+        }
+
+        var col = 0;
+        for (var i = 0; i < (736 / 16); i++) {
+            var x = 0;
+            movementXYGrid.Rows.Add(
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}",
+                $"x:{x++}, y: {col}"
+            );
+            movementXYGrid.Rows[i].HeaderCell.Value = (i + 1).ToString();
+
+            col++;
+        }
+        
+        movementXYGrid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
+        movementXYGrid.AutoSizeRowsMode = DataGridViewAutoSizeRowsMode.AllCells;
 
         movementBitmaskGridView.ResumeLayout();
         movementCostGridView.ResumeLayout();
+        movementXYGrid.ResumeLayout();
     }
 
     private void RefreshMovementGridViewer() {
         if (ApiContainer == null) {
             return;
         }
+
+        frameCount++;
+        if (frameCount % 10 != 0) {
+            return;
+        }
+
+        frameCount = 0;
 
         var bitmaskBytes =
             ApiContainer.Memory.ReadByteRange(Common.MovementBitmaskGrid.Address, Common.MovementBitmaskGrid.Length);
@@ -242,9 +310,14 @@ public class FmaiForm : Form, IExternalToolForm {
 
             if (bitmaskBytes[i] == 1) {
                 movementBitmaskGridView.Rows[row].Cells[col].Style.BackColor = Color.FromKnownColor(KnownColor.Blue);
+                movementXYGrid.Rows[row].Cells[col].Style.BackColor = Color.FromKnownColor(KnownColor.Wheat);
+            } else if (bitmaskBytes[i] == 145) {
+                movementBitmaskGridView.Rows[row].Cells[col].Style.BackColor = Color.FromKnownColor(KnownColor.Green);
+                movementXYGrid.Rows[row].Cells[col].Style.BackColor = Color.FromKnownColor(KnownColor.Green);
             }
             else {
                 movementBitmaskGridView.Rows[row].Cells[col].Style.BackColor = Color.FromKnownColor(KnownColor.White);
+                movementXYGrid.Rows[row].Cells[col].Style.BackColor = Color.FromKnownColor(KnownColor.White);
             }
         }
 
@@ -285,12 +358,19 @@ public class FmaiForm : Form, IExternalToolForm {
         };
     }
 
+    private Common.TileGridCoordinate BitmaskToTileGridCoordinate(int row, int col, int baseLength=17, int width=30) {
+        var offset = row * 16 + col - baseLength;
+        return new Common.TileGridCoordinate(offset % width, offset / width);
+    }
+
     private void RefreshFormControls() {
+        SuspendLayout();
         foreach (var (value, label) in rows) {
             label.Text = value.Description + ": " + RamValueToInt(value);
         }
 
         RefreshMovementGridViewer();
+        ResumeLayout();
     }
 
     public void UpdateValues(ToolFormUpdateType type) => RefreshFormControls();

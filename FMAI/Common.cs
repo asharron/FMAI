@@ -1,6 +1,8 @@
 namespace FMAI;
 
 public class Common {
+    public record TileGridCoordinate(int x, int y);
+    
     public record RamValue(string Character, string Stat, long Address, int Length) {
         public string Description => $"{Character} {Stat}";
     }
