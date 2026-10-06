@@ -61,3 +61,18 @@ Know x,y coordinates to movement grid:
 (8, 19) => (37, 3)
 (10, 19) => (37, 5)
 (12, 19) => (37, 7)
+
+# Problems left to solve
+- How do I know a menu is open?
+- How do I know whatmenu is open?
+- How do I know what menu options are present?
+- How do I know which enemies I can attack
+- How do I know I'm in a dialog sequence?
+
+
+C12FC2  DA             PHX
+C12FC3  A0 04 00       LDY #$0004
+C12FC6  B7 00          LDA [$00],Y
+C12FC8  22 6B 2C C0    JSL $C02C6B
+C12FCC  1A             INC
+C12FCD  3A             DEC

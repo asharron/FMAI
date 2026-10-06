@@ -442,6 +442,10 @@ public class FmaiForm : Form, IExternalToolForm {
             return;
         }
 
+        if (!isMovingToTile) {
+            return;
+        }
+
         var selectedTileXRamValue =
             Common.TrackedValues.FirstOrDefault(value => value.Stat == "Selected Tile X");
         var selectedTileYRamValue =

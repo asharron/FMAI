@@ -8,8 +8,14 @@ public class Common {
     }
 
 
+    // These are probably 720 like the enemy selection grid
     public static  RamValue MovementBitmaskGrid = new ("Global", "Movement Bitmask Grid Full", 0x011B9A, 736);
     public static RamValue MovementCostGrid = new ("Global", "Movement Cost Grid Full", 0x01CB9A, 736);
+  
+    // value of 3 is close range attack
+    // value of 8 is a long range attack
+    // value of 0 is no target or can't attack
+    public static RamValue EnemySelectGrid = new ("Global", "Movement Cost Grid Full", 0x01CB9A, 720);
     
     public static readonly RamValue[] TrackedValues = [
         new("Global", "Money Small",      0x00129C, 1),
@@ -26,10 +32,21 @@ public class Common {
         new("Global", "Selected Tile X",      0x001640, 1),
         new("Global", "Selected Tile Y",      0x001642, 1),
         
+        new("Global", "Enemy Select Grid Start",      0x01D39A, 1),
+        
         
         new("Global", "Movement Bitmask Grid Start",      0x011B9A, 1),
         
         new("Global", "Movement Cost Grid Start",      0x01CB9A, 1),
+        
+        new("Menu", "Selected Menu Index",      0x0002F2, 1),
+        
+        new("Menu", "Current menu option",      0x0016A0, 1),
+        new("Menu", "Current menu option part 2",      0x0016A1, 1),
+        
+        new("Menu", "Is menu open",      0x0016A2, 1),
+        
+        new("Menu", "Is menu ready?",      0x00D545, 1),
         
         // Loyd
         //////////////////////////////////////////
