@@ -45,7 +45,8 @@ public class Common {
         new("Menu", "Current menu option part 2",      0x0016A1, 1),
         
         new("Menu", "Is menu open",      0x0016A2, 1),
-        
+       
+        // Value of 231?
         new("Menu", "Is menu ready?",      0x00D545, 1),
         
         // Loyd
@@ -202,7 +203,7 @@ public class Common {
         
         // Enemy
         ///////////////////////////
-        new("Enemy 1", "Leg Health", 0x00D849, 1),
+        new("Unit #4", "Leg Health", 0x00D849, 1),
     ];
     
     
